@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
           amount: data.total_amount,
           payment_mode: 'cash',
           payment_date: today,
+          source: 'whatsapp',
         }]);
       } else {
         const { data: deal } = await supabase
@@ -202,6 +203,7 @@ Deno.serve(async (req) => {
             rate: data.rate,
             total_amount: data.total_amount,
             deal_date: today,
+            source: 'whatsapp',
           }])
           .select()
           .single();
@@ -213,6 +215,7 @@ Deno.serve(async (req) => {
             amount: data.advance_paid,
             payment_mode: 'cash',
             payment_date: today,
+            source: 'whatsapp',
           }]);
         }
 
