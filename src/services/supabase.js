@@ -299,3 +299,59 @@ export const getRecentTransactions = async (userId, limit = 10) => {
 
   return { data: deals, error };
 };
+
+// ─── WhatsApp Integration ────────────────────────────────────────────────────
+
+export const getWhatsAppUser = async (phone) => {
+  const { data, error } = await supabase
+    .from('whatsapp_users')
+    .select('*, users(*)')
+    .eq('phone', phone)
+    .eq('is_active', true)
+    .maybeSingle();
+  return { data, error };
+};
+
+export const registerWhatsAppUser = async (phone, userId) => {
+  const { data, error } = await supabase
+    .from('whatsapp_users')
+    .upsert([{ phone, user_id: userId, is_active: true }], { onConflict: 'phone' })
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const createWhatsAppSession = async (session) => {
+  const { data, error } = await supabase
+    .from('whatsapp_sessions')
+    .insert([session])
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const getLatestPendingSession = async (phone) => {
+  // First expire old sessions
+  await supabase.rpc('expire_whatsapp_sessions');
+
+  const { data, error } = await supabase
+    .from('whatsapp_sessions')
+    .select('*')
+    .eq('phone', phone)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { data, error };
+};
+
+export const updateSessionStatus = async (id, status, extraData = {}) => {
+  const { data, error } = await supabase
+    .from('whatsapp_sessions')
+    .update({ status, ...extraData })
+    .eq('id', id)
+    .select()
+    .single();
+  return { data, error };
+};
+
