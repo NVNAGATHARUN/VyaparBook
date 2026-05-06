@@ -9,6 +9,7 @@ import AmountCard from '../components/common/AmountCard';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 import { useVoice, VOICE_STATES } from '../hooks/useVoice';
+import { useRealtime } from '../hooks/useRealtime';
 import { supabase } from '../services/supabase';
 import {
   getDashboardSummary,
@@ -80,6 +81,8 @@ const Home = ({ user }) => {
   const [savingDeal, setSavingDeal] = useState(false);
   const [toast, setToast] = useState(null);
   const [dbError, setDbError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [liveBanner, setLiveBanner] = useState(null);
 
   // New Party Detection State
   const [showNewParty, setShowNewParty] = useState(false);
@@ -120,6 +123,17 @@ const Home = ({ user }) => {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const showLiveBanner = (msg) => {
+    setLiveBanner(msg);
+    setTimeout(() => setLiveBanner(null), 3000);
+  };
+
+  const triggerBrowserNotification = (title, body) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/icons/icon-192.png' });
+    }
+  };
+
   const loadData = useCallback(async () => {
     if (!user) return;
     setLoadingData(true);
@@ -134,6 +148,7 @@ const Home = ({ user }) => {
       }
       setSummary(sum);
       setRecentTx(txs || []);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
@@ -143,7 +158,41 @@ const Home = ({ user }) => {
 
   useEffect(() => {
     loadData();
+    // Request notification permission on first load
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, [loadData]);
+
+  // ── Realtime Sync ────────────────────────────────────────────────────────
+  useRealtime({
+    userId: user?.id,
+    onDealChange: (payload) => {
+      const isWhatsApp = payload.new?.source === 'whatsapp';
+      if (isWhatsApp) {
+        const name = payload.new?.party_name || 'Someone';
+        showLiveBanner(`📱 WhatsApp: New deal from ${name}!`);
+        triggerBrowserNotification('VyaparBook — WhatsApp Entry', `New deal added via WhatsApp`);
+      } else {
+        showLiveBanner('🔄 Deal updated!');
+      }
+      loadData();
+    },
+    onPaymentChange: (payload) => {
+      const isWhatsApp = payload.new?.source === 'whatsapp';
+      showLiveBanner(isWhatsApp ? '📱 WhatsApp: Payment recorded!' : '🔄 Payment updated!');
+      loadData();
+    },
+    onPartyChange: (payload) => {
+      if (payload.eventType === 'INSERT') {
+        showLiveBanner(`👤 New party added: ${payload.new?.name || ''}`);
+      }
+      loadData();
+    },
+    onStockChange: () => {
+      loadData();
+    },
+  });
 
   // Step 1: Handle initial confirm from ConfirmationCard
   const handleInitialConfirm = async (finalData) => {
@@ -260,6 +309,7 @@ const Home = ({ user }) => {
           rate: finalData.rate,
           total_amount: finalData.total_amount,
           deal_date: today,
+          source: 'pwa',
         });
         if (dealErr) throw new Error('Deal save failed: ' + dealErr.message);
 
@@ -273,6 +323,7 @@ const Home = ({ user }) => {
             transaction_id: finalData.transaction_id || null,
             proof_url: uploadedProofUrl,
             payment_date: today,
+            source: 'pwa',
           });
         }
 
@@ -328,6 +379,14 @@ const Home = ({ user }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+
+      {/* Live Update Banner */}
+      {liveBanner && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-green-500 text-white text-center py-2.5 text-sm font-semibold shadow-lg animate-slide-down">
+          {liveBanner}
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-gradient-to-br from-green-600 to-green-500 px-4 pt-12 pb-6">
         <div className="flex items-start justify-between mb-1">
@@ -337,6 +396,11 @@ const Home = ({ user }) => {
               {user?.name || 'Trader'} 👋
             </h1>
             <p className="text-green-200 text-xs mt-0.5">{todayStr}</p>
+            {lastUpdated && (
+              <p className="text-green-300 text-[10px] mt-0.5">
+                🔄 Synced {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
           </div>
           <button
             onClick={loadData}
@@ -490,9 +554,16 @@ const Home = ({ user }) => {
                   {typeEmoji[tx.type] || '📋'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 text-sm truncate">
-                    {tx.parties?.name || 'Unknown'}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-gray-800 text-sm truncate">
+                      {tx.parties?.name || 'Unknown'}
+                    </p>
+                    {tx.source === 'whatsapp' ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">📱 WA</span>
+                    ) : (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">🌐 App</span>
+                    )}
+                  </div>
                   <p className="text-gray-400 text-xs capitalize">
                     {tx.type} • {tx.commodity} • {formatRelative(tx.deal_date)}
                   </p>

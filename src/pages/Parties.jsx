@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, ChevronRight, Users } from 'lucide-react';
 import { useParties } from '../hooks/useParties';
+import { useRealtime } from '../hooks/useRealtime';
 import { createParty } from '../services/supabase';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatAmount } from '../utils/formatAmount';
@@ -30,6 +31,25 @@ const Parties = ({ user }) => {
   const [newParty, setNewParty] = useState({ name: '', phone: '', type: 'other' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [liveBanner, setLiveBanner] = useState(null);
+
+  const showLiveBanner = (msg) => {
+    setLiveBanner(msg);
+    setTimeout(() => setLiveBanner(null), 3000);
+  };
+
+  // Real-time sync
+  useRealtime({
+    userId: user?.id,
+    onPartyChange: (payload) => {
+      if (payload.eventType === 'INSERT') {
+        showLiveBanner(`👤 New party: ${payload.new?.name || ''}`);
+      }
+      refetch();
+    },
+    onDealChange: () => refetch(),
+    onPaymentChange: () => refetch(),
+  });
 
   const filtered = parties.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -72,6 +92,12 @@ const Parties = ({ user }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+      {/* Live Banner */}
+      {liveBanner && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-green-500 text-white text-center py-2.5 text-sm font-semibold shadow-lg">
+          {liveBanner}
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b border-gray-100 px-4 pt-12 pb-4 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-3">
