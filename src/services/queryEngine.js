@@ -344,29 +344,21 @@ const getPartyPayments = async (userId, partyName) => {
     partyName
   }
 
+  // Single join query instead of two separate queries + JS filter
   const { data: payments, error } = await supabase
     .from('payments')
-    .select('*, deals(commodity, type)')
+    .select('*, deals!inner(commodity, type, party_id)')
     .eq('user_id', userId)
+    .eq('deals.party_id', party.id)
     .order('payment_date', { ascending: false })
 
   if (error) throw error;
 
-  // Filter payments for this party (since payments don't have party_id directly, we check the deal)
-  // Wait, payments DO have deal_id. We should fetch payments for deals belonging to this party.
-  const { data: partyDeals } = await supabase
-    .from('deals')
-    .select('id')
-    .eq('party_id', party.id);
-    
-  const partyDealIds = (partyDeals || []).map(d => d.id);
-  const filteredPayments = (payments || []).filter(p => partyDealIds.includes(p.deal_id));
-
   return {
     type: 'PARTY_PAYMENTS',
     party,
-    payments: filteredPayments,
-    totalPaid: filteredPayments.reduce((s, p) => s + p.amount, 0)
+    payments: payments || [],
+    totalPaid: (payments || []).reduce((s, p) => s + Number(p.amount), 0)
   }
 }
 

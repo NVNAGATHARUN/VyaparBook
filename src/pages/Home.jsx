@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { RefreshCw, AlertCircle, WifiOff, LogOut } from 'lucide-react';
+import { RefreshCw, CircleAlert as AlertCircle, WifiOff, LogOut } from 'lucide-react';
 import VoiceButton from '../components/voice/VoiceButton';
 import ConfirmationCard from '../components/voice/ConfirmationCard';
 import FollowUpCard from '../components/voice/FollowUpCard';
@@ -305,20 +305,25 @@ const Home = ({ user, onLogout }) => {
 
 
       if (finalData.type === 'payment') {
-        // Pure payment — find latest open deal for this party
+        // Pure payment — find the most recent open deal for this party
         const { data: openDeals } = await getDealsByParty(partyRecord.id);
-        const openDeal = (openDeals || []).find(
-          (d) => (d.total_amount - (d.payments?.reduce((s, p) => s + Number(p.amount), 0) || 0)) > 0
-        );
 
-        if (!openDeal && (!openDeals || openDeals.length === 0)) {
+        if (!openDeals || openDeals.length === 0) {
           throw new Error("No deals found for this party. Please create a deal first.");
         }
 
-        const targetDealId = openDeal?.id || openDeals[0].id; // Fallback to most recent deal
+        // Only target deals that have a genuine outstanding balance
+        const openDeal = (openDeals || []).find((d) => {
+          const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0);
+          return Number(d.total_amount) - paid > 0;
+        });
+
+        if (!openDeal) {
+          throw new Error(`All deals for ${partyRecord.name} are fully paid. Please create a new deal first.`);
+        }
 
         const { error: payErr } = await createPayment({
-          deal_id: targetDealId,
+          deal_id: openDeal.id,
           user_id: user.id,
           amount: finalData.total_amount,
           payment_mode: finalData.payment_mode || 'cash',
