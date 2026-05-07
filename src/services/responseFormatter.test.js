@@ -33,7 +33,7 @@ describe('Response Formatter', () => {
     const data = {
       type: 'PARTY_PENDING',
       party: { name: 'Kumar', id: '456' },
-      summary: { total_business: 10000, total_paid: 2000, pending_amount: 8000 },
+      summary: { pending_to_pay: 8000, pending_to_receive: 0, total_pending: 8000 },
       openDeals: [
         { deal_date: '2026-05-05', pending_amount: 8000 }
       ]
@@ -41,7 +41,7 @@ describe('Response Formatter', () => {
 
     const res = formatForWhatsApp(data);
     expect(res).toContain('*Kumar — Pending*');
-    expect(res).toContain('🔴 *Pending: ₹8000*');
+    expect(res).toContain('🔴 *Pending to Pay: ₹8000*');
     expect(res).toContain('*₹8000* pending');
   });
 

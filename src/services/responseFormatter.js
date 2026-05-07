@@ -11,6 +11,21 @@ export const formatForWhatsApp = (data) => {
   if (data.type === 'ERROR') {
     return formatError(data)
   }
+  if (data.type === 'CLARIFY') {
+    return data.question || 'Konchem clear ga cheppandi.'
+  }
+  if (data.type === 'CLARIFY_PARTY') {
+    return `
+❓ *Konchem clear cheyyandi*
+
+${data.question || 'Exact party select cheyyandi:'}
+
+${(data.options || []).map((p, i) =>
+  `${i + 1}. *${p.name}* (${p.type || 'other'})`
+).join('\n')}
+
+Party exact name type cheyyandi.`.trim()
+  }
 
   switch (data.type) {
     case 'PARTY_TRANSACTIONS':
@@ -59,7 +74,7 @@ const whatsappPartyTransactions = (data) => {
 
 📝 *Recent Deals:*
 ${top5.map((d, i) =>
-  `${i + 1}. ${formatDate(d.deal_date)} — ${d.deal_type === 'purchase' ? '🛒' : '💰'} ${d.deal_type}
+  `${i + 1}. ${formatDate(d.deal_date)} — ${(d.deal_type || d.type) === 'purchase' ? '🛒' : '💰'} ${(d.deal_type || d.type)}
    Total: ₹${formatAmount(d.total_amount)} | Pending: ₹${formatAmount(d.pending_amount)}`
 ).join('\n')}
 ${more > 0 ? `\n_...and ${more} more deals_` : ''}

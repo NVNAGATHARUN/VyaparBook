@@ -72,6 +72,10 @@ export default function QueryResult({ data, onClose }) {
             <LastPaymentView data={data} />}
           {data.type === 'FEATURES' &&
             <FeaturesView />}
+          {data.type === 'CLARIFY' &&
+            <ClarifyView data={data} />}
+          {data.type === 'CLARIFY_PARTY' &&
+            <ClarifyPartyView data={data} />}
           {data.type === 'UNKNOWN' &&
             <UnknownView />}
         </div>
@@ -471,6 +475,35 @@ const UnknownView = () => (
   </div>
 )
 
+const ClarifyView = ({ data }) => (
+  <div className="text-center py-8">
+    <p className="text-4xl mb-3">❓</p>
+    <p className="font-bold text-gray-700 mb-2">
+      Konchem clarify cheyyandi
+    </p>
+    <p className="text-gray-500">
+      {data.question || 'Mee question ki party peru/date range ivvandi.'}
+    </p>
+  </div>
+)
+
+const ClarifyPartyView = ({ data }) => (
+  <div className="py-4">
+    <p className="text-sm text-gray-600 mb-3">
+      {data.question || 'Exact party select cheyyandi.'}
+    </p>
+    {(data.options || []).map((p, i) => (
+      <div key={p.id || i} className="bg-white border border-gray-100 rounded-xl p-3 mb-2">
+        <p className="font-bold text-gray-800">{i + 1}. {p.name}</p>
+        <p className="text-xs text-gray-500">{p.type || 'other'}</p>
+      </div>
+    ))}
+    <p className="text-xs text-gray-500 mt-2">
+      Exact party name malli type cheyyandi.
+    </p>
+  </div>
+)
+
 // ── NEW VIEWS ──────────────────────────
 
 const PendingToPayView = ({ data }) => (
@@ -632,6 +665,8 @@ const getTitle = (data) => {
     STOCK_SUMMARY: 'Current Stock',
     LAST_PAYMENT: `${data.party?.name || ''} — Last Payment`,
     FEATURES: 'VyaparBook Features',
+    CLARIFY: 'Need More Details',
+    CLARIFY_PARTY: 'Select Party',
     ERROR: 'Not Found',
     UNKNOWN: 'Not Understood'
   }

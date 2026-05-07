@@ -12,7 +12,7 @@ export default function QueryBar({ userId, onResult }) {
 
     try {
       const intent = await detectIntent(query)
-      const result = await executeQuery(intent, userId)
+      const result = await executeQuery(intent, userId, null)
       onResult(result)
       setQuery('')
     } catch (err) {

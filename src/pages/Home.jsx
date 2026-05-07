@@ -126,7 +126,7 @@ const Home = ({ user, onLogout }) => {
           
           // If query intent → show query result
           if (isQueryIntent(intent)) {
-            const result = await executeQuery(intent, user?.id);
+          const result = await executeQuery(intent, user?.id, null);
             setQueryResult(formatForPWA(result));
             resetVoice();
             return;

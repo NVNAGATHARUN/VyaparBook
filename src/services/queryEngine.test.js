@@ -11,21 +11,27 @@ vi.mock('./supabase', () => ({
 
 describe('Query Engine', () => {
   it('should route QUERY_PARTY_TRANSACTIONS correctly', async () => {
-    // Mock the chained Supabase response for findParty and getPartyTransactions
-    const mockSelect = vi.fn().mockReturnThis();
-    const mockEq = vi.fn().mockReturnThis();
-    const mockIlike = vi.fn().mockReturnThis();
-    const mockLimit = vi.fn().mockResolvedValue({ data: [{ id: '123', name: 'Ravi' }] });
-    const mockOrder = vi.fn().mockResolvedValue({ 
-      data: [{ deal_id: 1, total_amount: 500, total_paid: 200, pending_amount: 300 }] 
-    });
-
     supabase.from.mockImplementation((table) => {
       if (table === 'parties') {
-        return { select: mockSelect, eq: mockEq, ilike: mockIlike, limit: mockLimit };
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          ilike: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [{ id: '123', name: 'Ravi' }] })
+        };
       }
-      if (table === 'deal_summary') {
-        return { select: mockSelect, eq: mockEq, order: mockOrder };
+      if (table === 'deals') {
+        const chain = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({
+            data: [{ id: 1, total_amount: 500, payments: [{ amount: 200 }], type: 'purchase' }]
+          })
+        }
+        return {
+          ...chain
+        };
       }
     });
 

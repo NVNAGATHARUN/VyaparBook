@@ -136,6 +136,25 @@ Deno.serve(async (req) => {
     const user = waUser.users;
     const userId = user.id;
 
+    // DB-level idempotency guard using provider message id
+    if (message_id) {
+      const { error: eventErr } = await supabase
+        .from('whatsapp_message_events')
+        .insert([{
+          user_id: userId,
+          phone,
+          fingerprint: `provider:${message_id}`,
+          raw_text: text
+        }]);
+
+      if (eventErr && String(eventErr.message || '').toLowerCase().includes('duplicate')) {
+        return new Response(
+          JSON.stringify({ reply: '✅ Duplicate message ignore chesanu.' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // ── Step 2: Check for pending session ──────────────────────────────────
     await supabase.rpc('expire_whatsapp_sessions'); // Clean expired sessions
 

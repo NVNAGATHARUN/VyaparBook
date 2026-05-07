@@ -36,6 +36,71 @@ const getPendingSession = async (phone) => {
   return data || null
 }
 
+const getLatestQueryContext = async (phone) => {
+  const { data } = await supabase
+    .from('whatsapp_sessions')
+    .select('session_data')
+    .eq('phone', phone)
+    .eq('intent', 'QUERY_CONTEXT')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data?.session_data || null
+}
+
+const saveQueryContext = async (phone, userId, context) => {
+  await supabase
+    .from('whatsapp_sessions')
+    .insert([{
+      phone,
+      user_id: userId,
+      session_data: context,
+      intent: 'QUERY_CONTEXT',
+      status: 'resolved'
+    }])
+}
+
+const getMessageFingerprint = (phone, text) => {
+  const minuteBucket = new Date().toISOString().slice(0, 16)
+  return `${phone}|${text.trim().toLowerCase()}|${minuteBucket}`
+}
+
+const isDuplicateMessage = async (phone, userId, text) => {
+  const fingerprint = getMessageFingerprint(phone, text)
+  const { data } = await supabase
+    .from('whatsapp_message_events')
+    .select('id')
+    .eq('phone', phone)
+    .eq('fingerprint', fingerprint)
+    .limit(1)
+  return !!(data && data.length > 0)
+}
+
+const saveMessageFingerprint = async (phone, userId, text) => {
+  const fingerprint = getMessageFingerprint(phone, text)
+  await supabase.from('whatsapp_message_events').insert([{
+    phone,
+    user_id: userId,
+    fingerprint,
+    raw_text: text
+  }]).catch(() => {})
+}
+
+const logQueryAudit = async ({ userId, phone, question, intent, result }) => {
+  const checks = result?.audit?.checks || []
+  const isConsistent = checks.every((c) => c.ok !== false)
+  await supabase.from('query_audit_logs').insert([{
+    user_id: userId,
+    phone,
+    question,
+    intent,
+    result_type: result?.type || 'UNKNOWN',
+    checks,
+    is_consistent: isConsistent,
+    result_payload: result
+  }]).catch(() => {})
+}
+
 const saveSession = async ({ phone, user_id, session_data, intent, status }) => {
   // Cancel any existing pending sessions first
   await supabase
@@ -330,6 +395,11 @@ Text mein likh ke bhejo ya dubara try karo.`
   const cleanText = messageText.trim()
   console.log('Processing message:', cleanText)
 
+  if (await isDuplicateMessage(phone, user.id, cleanText)) {
+    return `✅ Same message already process chesanu. Duplicate save avoid chesanu.`
+  }
+  await saveMessageFingerprint(phone, user.id, cleanText)
+
   // Step 3: Check for pending confirmation
   const pendingSession = await getPendingSession(phone)
   if (pendingSession) {
@@ -366,7 +436,8 @@ Dobara bolo ya type karo 🎤`
   }
 
   // Step 4: Detect intent
-  const intent = await detectIntent(cleanText)
+  const queryContext = await getLatestQueryContext(phone)
+  const intent = await detectIntent(cleanText, queryContext)
   console.log('Intent:', intent.intent, 'Confidence:', intent.confidence)
 
   // Step 5: Handle GREETING
@@ -396,39 +467,26 @@ _"features" type karo sab dekhne ke liye_`
 
   // Step 6: Handle FEATURES query
   if (intent.intent === 'QUERY_FEATURES') {
-    return `🚀 *VyaparBook Features*
-
-🎤 *Voice Entry*
-  Telugu/English mein bolo, auto save!
-
-💸 *Deal Tracking*
-  Purchase aur Sale track karo
-
-💰 *Payment Tracking*
-  Partial payments supported
-
-📊 *Pending Amounts*
-  Party-wise pending instantly
-
-📋 *Transaction History*
-  Complete deal history
-
-📦 *Stock Tracking*
-  Godown inventory auto-updated
-
-📱 *WhatsApp Integration*
-  Voice notes se entry karo
-
-🔄 *Real-time Sync*
-  WhatsApp entry = instant app update
-
-_${APP_URL}_`
+    const result = { type: 'FEATURES' }
+    return formatForWhatsApp(result)
   }
 
   // Step 7: Handle QUERY intents
   if (isQueryIntent(intent)) {
     try {
-      const result = await executeQuery(intent, user.id)
+      const result = await executeQuery(intent, user.id, queryContext)
+      await saveQueryContext(phone, user.id, {
+        party_name: intent?.entities?.party_name || queryContext?.party_name || null,
+        last_intent: intent.intent,
+        original_text: cleanText
+      })
+      await logQueryAudit({
+        userId: user.id,
+        phone,
+        question: cleanText,
+        intent: intent.intent,
+        result
+      })
 
       if (!result || result.type === 'UNKNOWN') {
         return `🤔 Ye query samajh nahi aaya.

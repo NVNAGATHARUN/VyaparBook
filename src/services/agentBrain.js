@@ -200,32 +200,88 @@ Cannot understand or off-topic.
 Now classify this message:
 `
 
-export const detectIntent = async (message) => {
-  try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash-latest'
-    })
+const inferIntentFromText = (message) => {
+  const text = (message || '').toLowerCase().trim()
+  const startsLikeQuery = /^(show|give me|tell me|what|how much|list|all|which|who)/.test(text)
 
-    const result = await model.generateContent(
-      INTENT_PROMPT + message
-    )
+  if (/^(hi|hello|hey|good morning|good evening|good afternoon|namaste)\b/.test(text)) {
+    return 'GREETING'
+  }
+  if (/feature|help|what can you do|how to use|vyaparbook/.test(text)) {
+    return 'QUERY_FEATURES'
+  }
+  if (/stock|inventory|godown/.test(text)) {
+    return 'QUERY_STOCK'
+  }
+  if (/today|aaj|ivvaalu/.test(text)) {
+    return 'QUERY_TODAY'
+  }
+  if (/month|monthly|nela/.test(text)) {
+    return 'QUERY_MONTHLY'
+  }
+  if (/who owes me|receive|raavali/.test(text)) {
+    return 'QUERY_TO_RECEIVE'
+  }
+  if (/whom.*pay|who should i pay|to pay|pay cheyali|send money/.test(text)) {
+    return 'QUERY_TO_PAY'
+  }
+  if (/all transaction|all deals|complete history|show me deals|transactions list/.test(text)) {
+    return 'QUERY_ALL_TRANSACTIONS'
+  }
+  if (/pending/.test(text) && startsLikeQuery) {
+    return 'QUERY_PARTY_PENDING'
+  }
+  return 'UNKNOWN'
+}
+
+export const detectIntent = async (message, context = null) => {
+  try {
+    const contextPrompt = context
+      ? `\n\nPrevious conversation context (use only if user message is follow-up):\n${JSON.stringify(context)}\n`
+      : ''
+
+    let result
+    try {
+      const primaryModel = genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash'
+      })
+      result = await primaryModel.generateContent(
+        INTENT_PROMPT + contextPrompt + message
+      )
+    } catch (primaryError) {
+      // Some keys/projects only expose the "-latest" alias.
+      const fallbackModel = genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash-latest'
+      })
+      result = await fallbackModel.generateContent(
+        INTENT_PROMPT + contextPrompt + message
+      )
+    }
 
     const text = result.response.text()
     const clean = text
-      .replace(/\`\`\`json/g, '')
-      .replace(/\`\`\`/g, '')
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
       .trim()
 
     const parsed = JSON.parse(clean)
     console.log('Intent detected:', parsed)
-    return parsed
+    if (!parsed.intent || parsed.intent === 'UNKNOWN') {
+      return {
+        ...parsed,
+        intent: inferIntentFromText(message),
+        original_text: parsed.original_text || message
+      }
+    }
+    return { ...parsed, original_text: parsed.original_text || message }
 
   } catch (error) {
     console.error('Intent detection failed:', error)
     return {
-      intent: 'UNKNOWN',
+      intent: inferIntentFromText(message),
       confidence: 0,
-      entities: {}
+      entities: {},
+      original_text: message
     }
   }
 }
