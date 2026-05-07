@@ -109,6 +109,25 @@ export const createDeal = async (deal) => {
   return { data, error };
 };
 
+export const updateDeal = async (dealId, updates) => {
+  const { data, error } = await supabase
+    .from('deals')
+    .update(updates)
+    .eq('id', dealId)
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const softDeleteDeal = async (dealId, userId) => {
+  const { error } = await supabase
+    .from('deals')
+    .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+    .eq('id', dealId)
+    .eq('user_id', userId);
+  return { error };
+};
+
 export const getDealSummary = async (userId) => {
   const { data, error } = await supabase
     .from('deal_summary')
