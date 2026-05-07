@@ -54,7 +54,19 @@ VyaparBook is a **Progressive Web App (PWA)** built specifically for Indian grai
 - **Deals** — All purchase and sale records
 - **Payments** — Full payment history with proof links
 - **Stock** — Auto-updated inventory (increases on purchase, decreases on sale)
-- **Reports** — Business analytics
+- **Reports** — Business analytics with **Net Profit** calculation (Sales - Purchase - Expenses)
+
+### 📈 Financial Tools & Interest Calculator *(New!)*
+- **Multi-mode Calculator**: Simple Interest, Compound Interest, and **EMI (Monthly)**.
+- **Loan Tracking**: Save loans (Bank, Gold, Hand loans) and track repayments.
+- **Installment Reminders**: Automated list of upcoming installments with WhatsApp reminder links.
+- **Expense Management**: Track business overheads like Labor, Rent, Fuel, and Electricity with category icons.
+
+### 🤖 Advanced AI Agent (WhatsApp & App) *(New!)*
+- **Polite Chat**: Responds to greetings (Hi/Hello) and gratitude (Thank You/Dhanyawaad) naturally.
+- **Smart Clarification**: Proactively asks for missing details (like "Which party?") instead of failing.
+- **WhatsApp Bot**: Record deals, ask for pending balances, or get stock status via WhatsApp voice notes.
+- **Receipt Prompts**: Gently asks to attach a photo receipt after recording payments.
 
 ### 📶 Offline Support
 - Full PWA with service worker — works offline
@@ -221,4 +233,4 @@ VyaparBook is designed to replace the traditional physical Khata book that milli
 
 ---
 
-*Version 1.0.0 — May 2026*
+*Version 1.1.0 — May 2026*
