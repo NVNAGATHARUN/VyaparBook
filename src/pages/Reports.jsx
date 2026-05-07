@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import BusinessChart from '../components/charts/BusinessChart';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -36,7 +36,7 @@ const Reports = ({ user }) => {
 
         let query = supabase
           .from('deals')
-          .select('type, total_amount, commodity, deal_date, parties(name)')
+          .select('id, party_id, type, total_amount, commodity, deal_date, parties(name), payments(amount)')
           .eq('user_id', user.id);
 
         if (fromDate) {
@@ -48,16 +48,29 @@ const Reports = ({ user }) => {
         let totalPurchase = 0;
         let totalSale = 0;
         const monthlyMap = {};
+        const partyPending = {}; // { id: { name, purchasePending, salePending } }
 
         (deals || []).forEach((d) => {
           const month = d.deal_date?.slice(0, 7) || 'Unknown';
           if (!monthlyMap[month]) monthlyMap[month] = { purchases: 0, sales: 0 };
+          
           if (d.type === 'purchase') {
             totalPurchase += Number(d.total_amount || 0);
             monthlyMap[month].purchases += Number(d.total_amount || 0);
           } else if (d.type === 'sale') {
             totalSale += Number(d.total_amount || 0);
             monthlyMap[month].sales += Number(d.total_amount || 0);
+          }
+
+          const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+          const pending = Math.max(0, Number(d.total_amount || 0) - paid);
+
+          if (pending > 0) {
+            if (!partyPending[d.party_id]) {
+              partyPending[d.party_id] = { name: d.parties?.name || 'Unknown', purchase: 0, sale: 0 };
+            }
+            if (d.type === 'purchase') partyPending[d.party_id].purchase += pending;
+            if (d.type === 'sale') partyPending[d.party_id].sale += pending;
           }
         });
 
@@ -67,19 +80,16 @@ const Reports = ({ user }) => {
           sales: vals.sales,
         }));
 
-        // Pending by party
-        const { data: partySummaryData } = await supabase
-          .from('party_summary')
-          .select('*')
-          .eq('user_id', user.id);
+        const toPay = [];
+        const toReceive = [];
 
-        const toPay = (partySummaryData || [])
-          .filter((p) => p.deal_type === 'purchase' && Number(p.total_pending) > 0)
-          .sort((a, b) => Number(b.total_pending) - Number(a.total_pending));
+        Object.entries(partyPending).forEach(([id, p]) => {
+          if (p.purchase > 0) toPay.push({ party_id: id, party_name: p.name, total_pending: p.purchase });
+          if (p.sale > 0) toReceive.push({ party_id: id, party_name: p.name, total_pending: p.sale });
+        });
 
-        const toReceive = (partySummaryData || [])
-          .filter((p) => p.deal_type === 'sale' && Number(p.total_pending) > 0)
-          .sort((a, b) => Number(b.total_pending) - Number(a.total_pending));
+        toPay.sort((a, b) => b.total_pending - a.total_pending);
+        toReceive.sort((a, b) => b.total_pending - a.total_pending);
 
         setData({
           totalPurchase,

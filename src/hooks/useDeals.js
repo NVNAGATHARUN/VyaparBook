@@ -29,7 +29,7 @@ export const useDeals = (userId, partyId = null) => {
   }, [userId, partyId]);
 
   useEffect(() => {
-    fetchDeals();
+    fetchDeals(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [fetchDeals]);
 
   return { deals, loading, error, refetch: fetchDeals };

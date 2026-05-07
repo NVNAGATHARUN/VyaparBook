@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { getParties, getDealsByParty, createPayment } from '../services/supabase';
@@ -28,6 +28,19 @@ const AddPayment = ({ user }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const loadDeals = useCallback(async (partyId) => {
+    const { data } = await getDealsByParty(partyId);
+    // Filter deals with pending amounts
+    const openDeals = (data || []).filter((d) => {
+      const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0);
+      return Number(d.total_amount) - paid > 0;
+    });
+    setDeals(openDeals);
+    if (openDeals.length > 0 && !form.deal_id) {
+      setForm(prev => ({ ...prev, deal_id: openDeals[0].id }));
+    }
+  }, [form.deal_id]);
+
   useEffect(() => {
     const load = async () => {
       if (!user) return;
@@ -42,17 +55,7 @@ const AddPayment = ({ user }) => {
       }
     };
     load();
-  }, [user, defaultPartyId]);
-
-  const loadDeals = async (partyId) => {
-    const { data } = await getDealsByParty(partyId);
-    // Filter deals with pending amounts
-    const openDeals = (data || []).filter((d) => {
-      const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0);
-      return Number(d.total_amount) - paid > 0;
-    });
-    setDeals(openDeals);
-  };
+  }, [user, defaultPartyId, loadDeals]);
 
   const getDealPending = (deal) => {
     const paid = (deal.payments || []).reduce((s, p) => s + Number(p.amount), 0);
@@ -66,6 +69,7 @@ const AddPayment = ({ user }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.party_id) { setError('Please select a party'); return; }
+    if (!form.deal_id) { setError('Please select a pending deal for this payment'); return; }
     if (!form.amount || Number(form.amount) <= 0) {
       setError('Please enter a valid amount');
       return;
@@ -85,7 +89,7 @@ const AddPayment = ({ user }) => {
       });
 
       if (payErr) throw new Error(payErr.message);
-      navigate(-1);
+      navigate('/', { state: { refresh: true } });
     } catch (err) {
       setError(err.message || 'Failed to save payment');
     } finally {
@@ -148,7 +152,7 @@ const AddPayment = ({ user }) => {
         {/* Deal selection */}
         {deals.length > 0 && (
           <div>
-            <label className="text-sm font-bold text-gray-700 mb-2 block">Select Deal (optional)</label>
+            <label className="text-sm font-bold text-gray-700 mb-2 block">Select Deal *</label>
             <div className="space-y-2">
               {deals.map((d) => (
                 <button
@@ -176,6 +180,12 @@ const AddPayment = ({ user }) => {
               ))}
             </div>
           </div>
+        )}
+
+        {!deals.length && partySearch && form.party_id && (
+          <p className="text-sm font-semibold text-orange-600 bg-orange-50 p-3 rounded-xl border border-orange-200">
+            ⚠️ No pending deals found for this party. Please create a deal first.
+          </p>
         )}
 
         {/* Amount */}

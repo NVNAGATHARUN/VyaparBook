@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { XCircle, ArrowRight } from 'lucide-react';
-import { formatAmount } from '../../utils/formatAmount';
 
 /**
  * FollowUpCard displays missing fields one by one to gather necessary data

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { getStock } from '../services/supabase';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 

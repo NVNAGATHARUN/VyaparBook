@@ -26,6 +26,39 @@ export const useVoice = () => {
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
 
+  const processAudio = useCallback(async (blob) => {
+    try {
+      // Step 1: Transcribe
+      setVoiceState(VOICE_STATES.TRANSCRIBING);
+      const { text, error: sttError } = await transcribeAudio(blob);
+
+      if (sttError) {
+        setError(`Could not hear clearly: ${sttError}`);
+        setVoiceState(VOICE_STATES.ERROR);
+        return;
+      }
+
+      setTranscript(text);
+
+      // Step 2: Parse
+      setVoiceState(VOICE_STATES.PARSING);
+      const { data, error: parseError } = await parseTransaction(text);
+
+      if (parseError || !data) {
+        setError(`Could not understand: ${parseError || 'Unknown error'}`);
+        setVoiceState(VOICE_STATES.ERROR);
+        return;
+      }
+
+      setParsedData(data);
+      setVoiceState(VOICE_STATES.CONFIRMING);
+    } catch (err) {
+      console.error('Processing error:', err);
+      setError('Something went wrong. Please try again.');
+      setVoiceState(VOICE_STATES.ERROR);
+    }
+  }, []);
+
   const startRecording = useCallback(async () => {
     try {
       setError(null);
@@ -68,7 +101,7 @@ export const useVoice = () => {
       setError('Microphone access denied. Please allow microphone and try again.');
       setVoiceState(VOICE_STATES.ERROR);
     }
-  }, []);
+  }, [processAudio]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -76,38 +109,6 @@ export const useVoice = () => {
       setVoiceState(VOICE_STATES.TRANSCRIBING);
     }
   }, []);
-
-  const processAudio = async (blob) => {
-    try {
-      // Step 1: Transcribe
-      setVoiceState(VOICE_STATES.TRANSCRIBING);
-      const { text, error: sttError } = await transcribeAudio(blob);
-
-      if (sttError) {
-        setError(`Could not hear clearly: ${sttError}`);
-        setVoiceState(VOICE_STATES.ERROR);
-        return;
-      }
-
-      setTranscript(text);
-
-      // Step 2: Parse
-      setVoiceState(VOICE_STATES.PARSING);
-      const { data, error: parseError } = await parseTransaction(text);
-
-      if (parseError || !data) {
-        setError(`Could not understand: ${parseError || 'Unknown error'}`);
-        setVoiceState(VOICE_STATES.ERROR);
-        return;
-      }
-
-      setParsedData(data);
-      setVoiceState(VOICE_STATES.CONFIRMING);
-    } catch (err) {
-      setError('Something went wrong. Please try again.');
-      setVoiceState(VOICE_STATES.ERROR);
-    }
-  };
 
   const retranscribeWithText = async (editedText) => {
     setTranscript(editedText);

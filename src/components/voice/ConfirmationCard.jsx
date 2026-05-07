@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Search, Lock, AlertCircle } from 'lucide-react';
-import { formatAmount } from '../../utils/formatAmount';
 
 const unitOptions = ['bags', 'lorry', 'quintal', 'ton', 'kg'];
 
@@ -43,14 +42,14 @@ const ConfirmationCard = ({
     const q = Number(quantity);
     const r = Number(rate);
     if (q > 0 && r > 0) {
-      setTotalAmount(q * r);
+      setTotalAmount(q * r); // eslint-disable-line react-hooks/set-state-in-effect
     }
   }, [quantity, rate]);
 
   useEffect(() => {
     const t = Number(totalAmount);
     const a = Number(advancePaid);
-    setPendingAmount(Math.max(0, t - a));
+    setPendingAmount(Math.max(0, t - a)); // eslint-disable-line react-hooks/set-state-in-effect
   }, [totalAmount, advancePaid]);
 
   // Clear error when field is fixed

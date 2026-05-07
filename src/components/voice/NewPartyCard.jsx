@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 const partyTypes = [

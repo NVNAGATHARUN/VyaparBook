@@ -37,7 +37,7 @@ export const useParties = (userId) => {
   }, [userId]);
 
   useEffect(() => {
-    fetchParties();
+    fetchParties(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [fetchParties]);
 
   return { parties, partySummary, loading, error, refetch: fetchParties };

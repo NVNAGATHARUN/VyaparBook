@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -30,12 +30,12 @@ const App = () => {
     const stored = localStorage.getItem('vyapar_user');
     if (stored) {
       try {
-        setUser(JSON.parse(stored));
+        setUser(JSON.parse(stored)); // eslint-disable-line react-hooks/set-state-in-effect
       } catch {
         localStorage.removeItem('vyapar_user');
       }
     }
-    setLoading(false);
+    setLoading(false);  
   }, []);
 
   // Online/offline detection
@@ -99,7 +99,7 @@ const App = () => {
             <Route path="*" element={<Navigate to="/login" replace />} />
           ) : (
             <>
-              <Route path="/" element={<Home user={user} />} />
+              <Route path="/" element={<Home user={user} onLogout={handleLogout} />} />
               <Route path="/parties" element={<Parties user={user} />} />
               <Route path="/parties/:id" element={<PartyDetail user={user} />} />
               <Route path="/deals" element={<Deals user={user} />} />

@@ -1,12 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Bell, RefreshCw, CheckCircle2, AlertCircle, WifiOff } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { RefreshCw, AlertCircle, WifiOff, LogOut } from 'lucide-react';
 import VoiceButton from '../components/voice/VoiceButton';
 import ConfirmationCard from '../components/voice/ConfirmationCard';
 import FollowUpCard from '../components/voice/FollowUpCard';
 import NewPartyCard from '../components/voice/NewPartyCard';
 import AmountCard from '../components/common/AmountCard';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import QueryBar from '../components/query/QueryBar';
+import QueryResult from '../components/query/QueryResult';
+
+import { detectIntent, isQueryIntent } from '../services/agentBrain';
+import { executeQuery } from '../services/queryEngine';
+import { formatForPWA } from '../services/responseFormatter';
 
 import { useVoice, VOICE_STATES } from '../hooks/useVoice';
 import { useRealtime } from '../hooks/useRealtime';
@@ -20,7 +26,6 @@ import {
   upsertStock,
   saveVoiceLog,
   getDealsByParty,
-  uploadPaymentProof,
 } from '../services/supabase';
 import { formatAmount } from '../utils/formatAmount';
 import { formatRelative } from '../utils/formatDate';
@@ -73,8 +78,9 @@ const getMissingFields = (parsed) => {
   return missing;
 };
 
-const Home = ({ user }) => {
+const Home = ({ user, onLogout }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [summary, setSummary] = useState({ toPay: 0, toReceive: 0, todayTotal: 0 });
   const [recentTx, setRecentTx] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -92,6 +98,9 @@ const Home = ({ user }) => {
   const [missingFields, setMissingFields] = useState([]);
   const [enrichedData, setEnrichedData] = useState(null);
 
+  // AI Query State
+  const [queryResult, setQueryResult] = useState(null);
+
   const {
     voiceState,
     transcript,
@@ -99,24 +108,42 @@ const Home = ({ user }) => {
     error: voiceError,
     startRecording,
     stopRecording,
-    retranscribeWithText,
     reset,
   } = useVoice();
 
   // Override reset to also clear local state
-  const resetVoice = () => {
+  const resetVoice = useCallback(() => {
     reset();
     setEnrichedData(null);
     setMissingFields([]);
-  };
+  }, [reset]);
 
   useEffect(() => {
-    if (voiceState === VOICE_STATES.CONFIRMING && parsedData && !enrichedData) {
-      const missing = getMissingFields(parsedData);
-      setMissingFields(missing);
-      setEnrichedData(parsedData);
-    }
-  }, [voiceState, parsedData, enrichedData]);
+    const processVoiceInput = async () => {
+      if (voiceState === VOICE_STATES.CONFIRMING && parsedData && !enrichedData) {
+        try {
+          const intent = await detectIntent(transcript);
+          
+          // If query intent → show query result
+          if (isQueryIntent(intent)) {
+            const result = await executeQuery(intent, user?.id);
+            setQueryResult(formatForPWA(result));
+            resetVoice();
+            return;
+          }
+        } catch (err) {
+          console.error('Intent detection error:', err);
+        }
+
+        // If action intent → existing transaction flow
+        const missing = getMissingFields(parsedData);
+        setMissingFields(missing);
+        setEnrichedData(parsedData);
+      }
+    };
+    
+    processVoiceInput();
+  }, [voiceState, parsedData, enrichedData, transcript, user?.id, resetVoice]);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -157,12 +184,21 @@ const Home = ({ user }) => {
   }, [user]);
 
   useEffect(() => {
-    loadData();
-    // Request notification permission on first load
+    loadData(); // eslint-disable-line react-hooks/set-state-in-effect
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, [loadData]);
+
+  // Reload when navigated back from AddPayment / AddDeal with refresh flag
+  useEffect(() => {
+    if (location.state?.refresh) {
+      loadData(); // eslint-disable-line react-hooks/set-state-in-effect
+      window.history.replaceState({}, '');
+      setTimeout(() => showToast('✅ Payment saved!'), 0);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.refresh]);
 
   // ── Realtime Sync ────────────────────────────────────────────────────────
   useRealtime({
@@ -267,18 +303,6 @@ const Home = ({ user }) => {
     try {
       const today = new Date().toISOString().split('T')[0];
 
-      // Handle File Upload if proof exists
-      let uploadedProofUrl = null;
-      if (finalData.proof_file) {
-        setToast({ msg: "Uploading receipt...", type: "success" });
-        const { url, error: uploadErr } = await uploadPaymentProof(finalData.proof_file);
-        if (uploadErr) {
-          console.error('Upload failed:', uploadErr);
-          setToast({ msg: "Receipt upload failed. Saving deal without it.", type: "error" });
-        } else {
-          uploadedProofUrl = url;
-        }
-      }
 
       if (finalData.type === 'payment') {
         // Pure payment — find latest open deal for this party
@@ -287,13 +311,18 @@ const Home = ({ user }) => {
           (d) => (d.total_amount - (d.payments?.reduce((s, p) => s + Number(p.amount), 0) || 0)) > 0
         );
 
+        if (!openDeal && (!openDeals || openDeals.length === 0)) {
+          throw new Error("No deals found for this party. Please create a deal first.");
+        }
+
+        const targetDealId = openDeal?.id || openDeals[0].id; // Fallback to most recent deal
+
         const { error: payErr } = await createPayment({
-          deal_id: openDeal?.id || null,
+          deal_id: targetDealId,
           user_id: user.id,
           amount: finalData.total_amount,
           payment_mode: finalData.payment_mode || 'cash',
           transaction_id: finalData.transaction_id || null,
-          proof_url: uploadedProofUrl,
           payment_date: today,
         });
         if (payErr) throw new Error('Payment save failed: ' + payErr.message);
@@ -321,7 +350,6 @@ const Home = ({ user }) => {
             amount: finalData.advance_paid,
             payment_mode: finalData.payment_mode || 'cash',
             transaction_id: finalData.transaction_id || null,
-            proof_url: uploadedProofUrl,
             payment_date: today,
             source: 'pwa',
           });
@@ -364,6 +392,11 @@ const Home = ({ user }) => {
     }
   };
 
+  // ── Handle AI Queries ─────────────────────────────────────────────────────────
+  const handleQueryResult = (result) => {
+    setQueryResult(formatForPWA(result));
+  };
+
   const greeting = () => {
     const h = new Date().getHours();
     if (h < 12) return 'Subah ki namaste';
@@ -402,13 +435,23 @@ const Home = ({ user }) => {
               </p>
             )}
           </div>
-          <button
-            onClick={loadData}
-            className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/20"
-            aria-label="Refresh"
-          >
-            <RefreshCw size={16} className="text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadData}
+              className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/20"
+              aria-label="Refresh"
+            >
+              <RefreshCw size={16} className="text-white" />
+            </button>
+            <button
+              onClick={onLogout}
+              className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/20"
+              aria-label="Logout"
+              title="Logout"
+            >
+              <LogOut size={16} className="text-white" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -426,6 +469,7 @@ const Home = ({ user }) => {
           </div>
         </div>
       )}
+
 
       {/* Summary Cards */}
       <div className="px-4 mt-4">
@@ -495,11 +539,19 @@ const Home = ({ user }) => {
               </button>
             </div>
           ) : (
-            <VoiceButton
-              voiceState={voiceState}
-              onStart={startRecording}
-              onStop={stopRecording}
-            />
+            <div className="flex flex-col w-full items-center">
+              <VoiceButton
+                voiceState={voiceState}
+                onStart={startRecording}
+                onStop={stopRecording}
+              />
+              <div className="w-full mt-8">
+                <QueryBar
+                  userId={user?.id}
+                  onResult={handleQueryResult}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -587,6 +639,9 @@ const Home = ({ user }) => {
           {toast.msg}
         </div>
       )}
+
+      {/* AI Query Result Bottom Sheet */}
+      <QueryResult data={queryResult} onClose={() => setQueryResult(null)} />
     </div>
   );
 };

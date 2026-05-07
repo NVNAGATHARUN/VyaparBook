@@ -153,8 +153,8 @@ export const uploadPaymentProof = async (file) => {
   const fileExt = file.name.split('.').pop();
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
   const filePath = `${fileName}`;
-
-  const { data, error } = await supabase.storage
+ 
+  const { error } = await supabase.storage
     .from('payment_proofs')
     .upload(filePath, file);
 
@@ -245,34 +245,36 @@ export const getVoiceLogs = async (userId, limit = 20) => {
 // ─── Dashboard Summary ────────────────────────────────────────────────────────
 
 export const getDashboardSummary = async (userId) => {
-  // Total to pay (purchase deals pending)
-  const { data: purchaseSummary } = await supabase
-    .from('deal_summary')
-    .select('pending_amount, type')
+  // Fetch deals with payments to calculate pending amounts reliably
+  const { data: deals, error } = await supabase
+    .from('deals')
+    .select('total_amount, type, deal_date, payments(amount)')
     .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching dashboard summary:', error);
+    return { toPay: 0, toReceive: 0, todayTotal: 0 };
+  }
 
   let toPay = 0;
   let toReceive = 0;
+  let todayTotal = 0;
+  const today = new Date().toISOString().split('T')[0];
 
-  if (purchaseSummary) {
-    purchaseSummary.forEach((d) => {
-      if (d.type === 'purchase') toPay += Number(d.pending_amount || 0);
-      if (d.type === 'sale') toReceive += Number(d.pending_amount || 0);
+  if (deals) {
+    deals.forEach((deal) => {
+      const paid = (deal.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+      const total = Number(deal.total_amount || 0);
+      const pending = Math.max(0, total - paid);
+
+      if (deal.type === 'purchase') toPay += pending;
+      if (deal.type === 'sale') toReceive += pending;
+      
+      if (deal.deal_date === today) {
+        todayTotal += total;
+      }
     });
   }
-
-  // Today's transactions
-  const today = new Date().toISOString().split('T')[0];
-  const { data: todayDeals } = await supabase
-    .from('deals')
-    .select('total_amount')
-    .eq('user_id', userId)
-    .eq('deal_date', today);
-
-  const todayTotal = (todayDeals || []).reduce(
-    (sum, d) => sum + Number(d.total_amount || 0),
-    0
-  );
 
   return { toPay, toReceive, todayTotal };
 };
@@ -280,11 +282,31 @@ export const getDashboardSummary = async (userId) => {
 // ─── Party Summary (pending per party) ────────────────────────────────────────
 
 export const getPartySummary = async (userId) => {
-  const { data, error } = await supabase
-    .from('party_summary')
-    .select('*')
+  // Fetch all deals with payments to calculate per-party pending amounts
+  const { data: deals, error } = await supabase
+    .from('deals')
+    .select('party_id, total_amount, type, payments(amount)')
     .eq('user_id', userId);
-  return { data, error };
+
+  if (error) return { data: [], error };
+
+  const summaryMap = {};
+  deals.forEach((deal) => {
+    const paid = (deal.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+    const pending = Math.max(0, Number(deal.total_amount || 0) - paid);
+
+    if (!summaryMap[deal.party_id]) {
+      summaryMap[deal.party_id] = { party_id: deal.party_id, pending_to_pay: 0, pending_to_receive: 0 };
+    }
+
+    if (deal.type === 'purchase') {
+      summaryMap[deal.party_id].pending_to_pay += pending;
+    } else if (deal.type === 'sale') {
+      summaryMap[deal.party_id].pending_to_receive += pending;
+    }
+  });
+
+  return { data: Object.values(summaryMap), error: null };
 };
 
 // ─── Recent Transactions ──────────────────────────────────────────────────────
@@ -354,4 +376,3 @@ export const updateSessionStatus = async (id, status, extraData = {}) => {
     .single();
   return { data, error };
 };
-

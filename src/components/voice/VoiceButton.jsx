@@ -1,5 +1,4 @@
-import React from 'react';
-import { Mic, Square, Loader2 } from 'lucide-react';
+import { Mic, Loader2 } from 'lucide-react';
 import { VOICE_STATES } from '../../hooks/useVoice';
 
 /**

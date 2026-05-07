@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Phone, Plus, Banknote } from 'lucide-react';
 import { getPartyById, getDealsByParty } from '../services/supabase';
@@ -10,7 +10,7 @@ import { formatDateLong, formatRelative } from '../utils/formatDate';
 const typeEmoji = { purchase: '🛒', sale: '💰', payment: '💸' };
 const typeColor = { purchase: 'bg-orange-100 text-orange-700', sale: 'bg-blue-100 text-blue-700' };
 
-const PartyDetail = ({ user }) => {
+const PartyDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [party, setParty] = useState(null);
@@ -34,7 +34,7 @@ const PartyDetail = ({ user }) => {
   }, [id]);
 
   useEffect(() => {
-    loadData();
+    loadData(); // eslint-disable-line react-hooks/set-state-in-effect
   }, [loadData]);
 
   const calcDealPending = (deal) => {
@@ -45,15 +45,8 @@ const PartyDetail = ({ user }) => {
     return Math.max(0, Number(deal.total_amount || 0) - paid);
   };
 
-  const calcDealPaid = (deal) => {
-    return (deal.payments || []).reduce(
-      (sum, p) => sum + Number(p.amount || 0),
-      0
-    );
-  };
-
   const totalBusiness = deals.reduce((s, d) => s + Number(d.total_amount || 0), 0);
-  const totalPaid = deals.reduce((s, d) => s + calcDealPaid(d), 0);
+  const totalPaid = deals.reduce((s, d) => s + (d.payments || []).reduce((ps, p) => ps + Number(p.amount || 0), 0), 0);
   const totalPending = deals.reduce((s, d) => s + calcDealPending(d), 0);
   const isPurchase = deals[0]?.type === 'purchase';
 
@@ -146,7 +139,6 @@ const PartyDetail = ({ user }) => {
           <div className="space-y-3">
             {deals.map((deal) => {
               const pending = calcDealPending(deal);
-              const paid = calcDealPaid(deal);
               const isPaid = pending <= 0;
 
               return (

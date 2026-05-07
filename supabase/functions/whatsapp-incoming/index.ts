@@ -70,8 +70,8 @@ const tmpl = {
     `⏰ *Session expire aindi!*\n\nMalli record cheyyandi 🎤`,
 };
 
-// ─── Gemini Parser ────────────────────────────────────────────────────────────
-const parseWithGemini = async (text, geminiKey) => {
+// ─── Groq Parser ────────────────────────────────────────────────────────────
+const parseWithGroq = async (text, groqKey) => {
   const prompt = `You are VyaparBook AI for Indian grain traders.
 Extract transaction from: "${text}"
 Text may be Telugu/English/Tenglish.
@@ -80,15 +80,21 @@ Return ONLY valid JSON, no markdown:
 Rules: purchase=we bought, sale=we sold, payment=money transfer. If qty and rate given, total=qty*rate. Telugu: degara=from, ki=to, konna=bought, ammanu=sold, pay chesanu=paid.`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiKey}`,
+    `https://api.groq.com/openai/v1/chat/completions`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      headers: { 
+        'Authorization': `Bearer ${groqKey}`,
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }]
+      }),
     }
   );
   const json = await res.json();
-  let raw = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+  let raw = json.choices?.[0]?.message?.content?.trim() || '';
   raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
   return JSON.parse(raw);
 };
@@ -102,7 +108,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL'),
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     );
-    const geminiKey = Deno.env.get('GEMINI_API_KEY');
+    const groqKey = Deno.env.get('GROQ_API_KEY');
 
     const body = await req.json();
     const { phone, message_type, text, message_id } = body;
@@ -312,7 +318,7 @@ Deno.serve(async (req) => {
     // -- New Transaction (default) --
     let parsed;
     try {
-      parsed = await parseWithGemini(text, geminiKey);
+      parsed = await parseWithGroq(text, groqKey);
     } catch {
       return new Response(
         JSON.stringify({ reply: tmpl.error('Samajhaledu. Please try again with more details.') }),

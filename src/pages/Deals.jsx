@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, ChevronRight } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
 import { getDeals } from '../services/supabase';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatAmount } from '../utils/formatAmount';

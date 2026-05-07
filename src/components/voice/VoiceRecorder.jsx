@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Mic, Square } from 'lucide-react';
 import { useVoice, VOICE_STATES } from '../../hooks/useVoice';
 import ConfirmationCard from './ConfirmationCard';
@@ -54,7 +54,7 @@ const getMissingFields = (parsed) => {
 /**
  * Full voice recorder panel — records, transcribes, parses, asks follow-up, and confirms
  */
-const VoiceRecorder = ({ onConfirmed, onCancel }) => {
+const VoiceRecorder = ({ onConfirmed }) => {
   const {
     voiceState,
     transcript,
@@ -71,7 +71,7 @@ const VoiceRecorder = ({ onConfirmed, onCancel }) => {
   useEffect(() => {
     if (voiceState === VOICE_STATES.CONFIRMING && parsedData) {
       const missing = getMissingFields(parsedData);
-      setMissingFields(missing);
+      setMissingFields(missing); // eslint-disable-line react-hooks/set-state-in-effect
       setEnrichedData(parsedData);
     }
   }, [voiceState, parsedData]);

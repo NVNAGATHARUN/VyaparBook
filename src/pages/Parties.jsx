@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Plus, ChevronRight, Users } from 'lucide-react';
 import { useParties } from '../hooks/useParties';
