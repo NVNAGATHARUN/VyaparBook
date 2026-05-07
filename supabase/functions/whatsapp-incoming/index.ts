@@ -25,6 +25,10 @@ const detectIntent = (text, pendingIntent = null) => {
   if (t === '1' || t === 'yes' || t === 'confirm' || t === 'sare') return 'CONFIRM_YES';
   if (t === '2' || t === 'no' || t === 'cancel' || t === 'vaddu') return 'CONFIRM_NO';
   if (pendingIntent === 'ASK_RATE' && /^\d+(\.\d+)?$/.test(t)) return 'PROVIDE_RATE';
+  
+  if (/^(hi|hello|hey|namaste|swagatam|good morning|hii|helo)\b/.test(t)) return 'GREETING';
+  if (/thank you|thanks|dhanyawaad|shukriya/.test(t)) return 'THANK_YOU';
+
   if (t.includes('pending') || t.includes('baaki') || t.includes('balance') || t.includes('ela undi')) return 'QUERY_PENDING';
   if (t.includes('stock') || t.includes('godown') || t.includes('maal')) return 'QUERY_STOCK';
   if (t.includes('summary') || t.includes('report') || t.includes('today') || t.includes('ivvaalu')) return 'QUERY_SUMMARY';
@@ -43,7 +47,13 @@ const fmt = (n) => {
 // ─── Templates ────────────────────────────────────────────────────────────────
 const tmpl = {
   notRegistered: (phone) =>
-    `👋 *VyaparBook lo register avvandi!*\n\nYour number (${phone}) is not registered.\n\n🔗 vyaparbook.com`,
+    `👋 *Namaste! VyaparBook lo register avvandi!*\n\nYour number (${phone}) is not registered yet. It only takes a minute to set up your digital khata!\n\n🔗 vyaparbook.com`,
+
+  greeting: (name) =>
+    `👋 *Namaste ${name || 'ji'}!* 🙏\n\nVyaparBook ki swagatam! Nenu meeku ela sahayapada galanu?\n\nMeeru voice notes tho transactions record cheyachu, leda pending balance adagachu.\n\n_Example: "Ravi degara 5 lorry paddy konnanu"_`,
+
+  thankYou: () =>
+    `🙏 *Swagatam!* Meeru eppudu sahayapada galigithe naku chala santhosham.\n\nInkemaina transactions record cheyali ante ventane voice note pampandi!`,
 
   transactionConfirm: (d) =>
     `✅ *Confirm Cheyali?*\n\n${d.type === 'purchase' ? '🛒' : '💰'} *${(d.type||'').toUpperCase()}*\n👤 Party: *${d.party_name}*\n🌾 ${d.quantity} ${d.unit} ${d.commodity}\n💰 Rate: *${fmt(d.rate)}/${d.unit}*\n📊 Total: *${fmt(d.total_amount)}*\n💵 Advance: ${fmt(d.advance_paid)}\n⏳ Pending: *${fmt(d.pending_amount)}*\n\n1️⃣ Confirm ✅\n2️⃣ Redo ❌`,
@@ -55,7 +65,7 @@ const tmpl = {
     `🤔 *Rate cheppaledu!*\n\n${d.type === 'purchase' ? '🛒' : '💰'} ${d.type}\n👤 ${d.party_name}\n📦 ${d.quantity} ${d.unit}\n\nOka ${d.unit} ki enta rate?\n\n(Just type the number)\nExample: *2350*`,
 
   success: (d) =>
-    `✅ *Saved!*\n\n👤 ${d.party_name}\n📊 ${fmt(d.total_amount)}\n⏳ Pending: ${fmt(d.pending_amount)}\n\n🔗 vyaparbook.com`,
+    `✅ *Successfully Saved!* 🙏\n\n👤 ${d.party_name}\n📊 ${fmt(d.total_amount)}\n⏳ Pending: ${fmt(d.pending_amount)}\n\n_Tip: Meeru payment proof/receipt photo unte pampachu, nenu save chesthanu!_ 📸`,
 
   pendingQuery: (partyName, summary) =>
     `👤 *${partyName} Summary*\n\n📊 Total: ${fmt(summary.total)}\n✅ Paid: ${fmt(summary.paid)}\n🔴 *Pending: ${fmt(summary.pending)}*\n\n🔗 vyaparbook.com`,
@@ -173,6 +183,20 @@ Deno.serve(async (req) => {
     const intent = detectIntent(text, pendingIntent);
 
     // ── Step 4: Route by intent ─────────────────────────────────────────────
+
+    // -- Greeting --
+    if (intent === 'GREETING') {
+      return new Response(JSON.stringify({ reply: tmpl.greeting(user.name) }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // -- Thank You --
+    if (intent === 'THANK_YOU') {
+      return new Response(JSON.stringify({ reply: tmpl.thankYou() }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // -- Confirmation YES --
     if (intent === 'CONFIRM_YES' && pendingSession) {
@@ -348,6 +372,21 @@ Deno.serve(async (req) => {
     parsed.total_amount = Number(parsed.total_amount) || 0;
     parsed.advance_paid = Number(parsed.advance_paid) || 0;
     parsed.pending_amount = Math.max(0, parsed.total_amount - parsed.advance_paid);
+
+    // Clarification logic: Check for missing key fields
+    if (!parsed.party_name && parsed.type !== 'summary') {
+      return new Response(
+        JSON.stringify({ reply: `👤 *Party name cheppaledu!*\n\nEe transaction evari kosam record cheyali?` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!parsed.total_amount && parsed.type === 'payment') {
+      return new Response(
+        JSON.stringify({ reply: `💸 *Amount entha?*\n\nKumar ki entha payment chesaru? Please amount cheppandi.` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Check if rate is missing
     if (!parsed.rate && parsed.type !== 'payment') {

@@ -21,9 +21,8 @@ import {
   getDashboardSummary,
   getRecentTransactions,
   createParty,
-  createDeal,
+  createDealAtomic,
   createPayment,
-  upsertStock,
   saveVoiceLog,
   getDealsByParty,
 } from '../services/supabase';
@@ -212,21 +211,19 @@ const Home = ({ user, onLogout }) => {
       } else {
         showLiveBanner('🔄 Deal updated!');
       }
-      loadData();
+      // Removed automatic loadData() to prevent API hammering. User can tap refresh.
     },
     onPaymentChange: (payload) => {
       const isWhatsApp = payload.new?.source === 'whatsapp';
       showLiveBanner(isWhatsApp ? '📱 WhatsApp: Payment recorded!' : '🔄 Payment updated!');
-      loadData();
     },
     onPartyChange: (payload) => {
       if (payload.eventType === 'INSERT') {
         showLiveBanner(`👤 New party added: ${payload.new?.name || ''}`);
       }
-      loadData();
     },
     onStockChange: () => {
-      loadData();
+      // Background sync handled
     },
   });
 
@@ -313,14 +310,18 @@ const Home = ({ user, onLogout }) => {
         }
 
         // Only target deals that have a genuine outstanding balance
-        const openDeal = (openDeals || []).find((d) => {
-          const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0);
-          return Number(d.total_amount) - paid > 0;
-        });
+        const openDealsSorted = (openDeals || [])
+          .filter(d => {
+            const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0);
+            return Math.max(0, Number(d.total_amount) - paid) > 0;
+          })
+          .sort((a, b) => new Date(a.deal_date) - new Date(b.deal_date));
 
-        if (!openDeal) {
+        if (openDealsSorted.length === 0) {
           throw new Error(`All deals for ${partyRecord.name} are fully paid. Please create a new deal first.`);
         }
+        
+        const openDeal = openDealsSorted[0];
 
         const { error: payErr } = await createPayment({
           deal_id: openDeal.id,
@@ -332,44 +333,22 @@ const Home = ({ user, onLogout }) => {
         });
         if (payErr) throw new Error('Payment save failed: ' + payErr.message);
       } else {
-        // Step 4: Save deal
-        const { data: deal, error: dealErr } = await createDeal({
-          user_id: user.id,
+        // Atomic Deal Save (Deal + Advance Payment + Stock all in one transaction)
+        const { error: dealErr } = await createDealAtomic({
           party_id: partyRecord.id,
           type: finalData.type,
           commodity: finalData.commodity,
-          quantity: finalData.quantity,
+          quantity: Number(finalData.quantity) || 0,
           unit: finalData.unit,
-          rate: finalData.rate,
-          total_amount: finalData.total_amount,
+          rate: Number(finalData.rate) || 0,
+          total_amount: Number(finalData.total_amount),
+          advance_paid: Number(finalData.advance_paid) || 0,
           deal_date: today,
           source: 'pwa',
+          payment_mode: finalData.payment_mode || 'cash',
         });
+        
         if (dealErr) throw new Error('Deal save failed: ' + dealErr.message);
-
-        // Step 5: If advance paid → save payment
-        if (finalData.advance_paid > 0) {
-          await createPayment({
-            deal_id: deal.id,
-            user_id: user.id,
-            amount: finalData.advance_paid,
-            payment_mode: finalData.payment_mode || 'cash',
-            transaction_id: finalData.transaction_id || null,
-            payment_date: today,
-            source: 'pwa',
-          });
-        }
-
-        // Step 6: Update stock
-        if (finalData.commodity && finalData.quantity > 0) {
-          await upsertStock(
-            user.id,
-            finalData.commodity,
-            finalData.unit,
-            finalData.quantity,
-            finalData.type
-          );
-        }
       }
 
       // Step 7: Save voice log

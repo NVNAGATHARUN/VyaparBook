@@ -1,15 +1,5 @@
 import { supabase } from './supabase'
-
-const computePending = (deal) => {
-  const totalPaid = (deal.payments || []).reduce(
-    (sum, p) => sum + Number(p.amount || 0), 0
-  )
-  const totalAmount = Number(deal.total_amount || 0)
-  return {
-    total_paid: totalPaid,
-    pending_amount: Math.max(0, totalAmount - totalPaid)
-  }
-}
+import { computePending } from '../utils/computePending'
 
 const inferQueryIntent = (text = '') => {
   const q = text.toLowerCase()

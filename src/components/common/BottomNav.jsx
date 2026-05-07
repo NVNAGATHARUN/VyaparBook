@@ -1,13 +1,13 @@
 
 import { NavLink } from 'react-router-dom';
-import { Home, Users, FileText, Package, BarChart2 } from 'lucide-react';
+import { Home, Users, FileText, BarChart2, Menu } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Home', icon: Home, exact: true },
   { path: '/parties', label: 'Parties', icon: Users },
   { path: '/deals', label: 'Deals', icon: FileText },
-  { path: '/stock', label: 'Stock', icon: Package },
   { path: '/reports', label: 'Reports', icon: BarChart2 },
+  { path: '/tools', label: 'More', icon: Menu },
 ];
 
 const BottomNav = () => {

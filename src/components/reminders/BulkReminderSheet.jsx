@@ -1,18 +1,24 @@
 import { useState } from 'react';
-import { X, MessageCircle, CheckSquare, Square, Send, AlertCircle } from 'lucide-react';
+import { X, MessageCircle, CheckSquare, Square, Send, AlertCircle, Edit2 } from 'lucide-react';
 import { formatAmount } from '../../utils/formatAmount';
+import { updateParty } from '../../services/supabase';
 
 /**
  * BulkReminderSheet
  * Shows a bottom sheet with all parties that have pending amounts.
  * User selects parties and sends WhatsApp reminders one-by-one via wa.me deep links.
  */
-const BulkReminderSheet = ({ parties, onClose, businessName = 'VyaparBook' }) => {
+const BulkReminderSheet = ({ parties, onClose, onUpdate, businessName = 'VyaparBook' }) => {
   // parties: [{ party_id, party_name, total_pending, phone? }]
   const [selected, setSelected] = useState(new Set());
   const [sent, setSent] = useState(new Set());
   const [sending, setSending] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
+
+  // Editing phone state
+  const [editingId, setEditingId] = useState(null);
+  const [newPhone, setNewPhone] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   const withPhone = parties.filter((p) => p.phone);
   const withoutPhone = parties.filter((p) => !p.phone);
@@ -68,16 +74,32 @@ const BulkReminderSheet = ({ parties, onClose, businessName = 'VyaparBook' }) =>
     setSending(false);
   };
 
+  const handleUpdatePhone = async (partyId) => {
+    if (!newPhone || newPhone.length < 10) return;
+    setUpdating(true);
+    try {
+      const { error } = await updateParty(partyId, { phone: newPhone });
+      if (error) throw error;
+      setEditingId(null);
+      setNewPhone('');
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      alert('Error updating phone: ' + err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const selectedList = withPhone.filter((p) => selected.has(p.party_id));
   const totalSelected = selectedList.reduce((s, p) => s + p.total_pending, 0);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-[100] flex items-end justify-center"
       style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-md bg-white rounded-t-3xl shadow-2xl animate-slide-up flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-md bg-white rounded-t-3xl shadow-2xl animate-slide-up flex flex-col max-h-[85vh] relative z-[101]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 shrink-0">
@@ -158,21 +180,62 @@ const BulkReminderSheet = ({ parties, onClose, businessName = 'VyaparBook' }) =>
 
           {/* Parties without phone */}
           {withoutPhone.length > 0 && (
-            <div className="mt-3 mb-2">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertCircle size={14} className="text-orange-400" />
-                <p className="text-xs text-gray-400 font-semibold">
+            <div className="mt-3 mb-6">
+              <div className="flex items-center gap-2 mb-3 bg-orange-50 p-3 rounded-xl border border-orange-100">
+                <AlertCircle size={14} className="text-orange-500" />
+                <p className="text-xs text-orange-600 font-semibold">
                   {withoutPhone.length} parties without phone — add their number to send reminders
                 </p>
               </div>
               {withoutPhone.map((party) => (
-                <div key={party.party_id} className="flex items-center gap-3 py-2.5 opacity-40">
-                  <Square size={20} className="text-gray-300 shrink-0" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-600 text-sm">{party.party_name}</p>
-                    <p className="text-xs text-gray-400">No phone number</p>
+                <div key={party.party_id} className="flex flex-col gap-2 py-3 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <Square size={20} className="text-gray-300 shrink-0 opacity-40" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-700 text-sm truncate">{party.party_name}</p>
+                      <p className="text-xs text-gray-400">No phone number</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-red-400">₹{formatAmount(party.total_pending)}</p>
+                      {editingId !== party.party_id && (
+                        <button
+                          onClick={() => {
+                            setEditingId(party.party_id);
+                            setNewPhone('');
+                          }}
+                          className="text-[10px] bg-green-500 text-white px-2 py-0.5 rounded-lg font-bold mt-1"
+                        >
+                          + Add Number
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm font-bold text-red-400">₹{formatAmount(party.total_pending)}</p>
+                  
+                  {editingId === party.party_id && (
+                    <div className="flex items-center gap-2 mt-1 animate-in slide-in-from-top-2">
+                      <input
+                        type="tel"
+                        autoFocus
+                        value={newPhone}
+                        onChange={(e) => setNewPhone(e.target.value)}
+                        placeholder="Enter phone number"
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-green-500"
+                      />
+                      <button
+                        onClick={() => handleUpdatePhone(party.party_id)}
+                        disabled={updating || !newPhone}
+                        className="bg-green-600 text-white px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50"
+                      >
+                        {updating ? '...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="text-gray-400 text-xs font-bold px-2"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

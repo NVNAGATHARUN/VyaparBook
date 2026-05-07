@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { exportReportPDF, exportTransactionsExcel } from '../services/exportService';
 import BusinessChart from '../components/charts/BusinessChart';
@@ -18,6 +18,7 @@ const Reports = ({ user }) => {
   const [data, setData] = useState(null);
   const [deals, setDeals] = useState([]);
   const [parties, setParties] = useState([]); // for reminder sheet
+  const [loans, setLoans] = useState([]); // for loan installments
   const [loading, setLoading] = useState(true);
 
   // UI state
@@ -30,100 +31,136 @@ const Reports = ({ user }) => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    const load = async () => {
-      if (!user) return;
-      setLoading(true);
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
 
-      try {
-        const now = new Date();
-        let fromDate = null;
-        if (period === 'month') {
-          fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        } else if (period === 'week') {
-          const d = new Date(now);
-          d.setDate(d.getDate() - 7);
-          fromDate = d.toISOString().split('T')[0];
+    try {
+      const now = new Date();
+      let fromDate = null;
+      if (period === 'month') {
+        fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        const y = fromDate.getFullYear();
+        const m = String(fromDate.getMonth() + 1).padStart(2, '0');
+        const d = String(fromDate.getDate()).padStart(2, '0');
+        fromDate = `${y}-${m}-${d}`;
+      } else if (period === 'week') {
+        const d7 = new Date(now);
+        d7.setDate(d7.getDate() - 7);
+        const y = d7.getFullYear();
+        const m = String(d7.getMonth() + 1).padStart(2, '0');
+        const d = String(d7.getDate()).padStart(2, '0');
+        fromDate = `${y}-${m}-${d}`;
+      }
+
+      // Fetch Deals
+      let query = supabase
+        .from('deals')
+        .select('id, party_id, type, total_amount, commodity, deal_date, parties(name, phone), payments(amount)')
+        .eq('user_id', user.id);
+
+      if (fromDate) query = query.gte('deal_date', fromDate);
+      const { data: fetchedDeals } = await query.order('deal_date');
+
+      // Fetch Expenses
+      let expQuery = supabase
+        .from('expenses')
+        .select('amount, expense_date')
+        .eq('user_id', user.id);
+      if (fromDate) expQuery = expQuery.gte('expense_date', fromDate);
+      const { data: fetchedExpenses } = await expQuery;
+
+      // Fetch Loans
+      const { data: fetchedLoans } = await supabase
+        .from('loans')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .order('next_installment_date');
+
+      setDeals(fetchedDeals || []);
+      setLoans(fetchedLoans || []);
+
+      let totalPurchase = 0;
+      let totalSale = 0;
+      let totalExpense = 0;
+      const monthlyMap = {};
+      const partyPending = {};
+
+      (fetchedDeals || []).forEach((d) => {
+        const month = d.deal_date?.slice(0, 7) || 'Unknown';
+        if (!monthlyMap[month]) monthlyMap[month] = { purchases: 0, sales: 0, expenses: 0 };
+        
+        if (d.type === 'purchase') {
+          totalPurchase += Number(d.total_amount || 0);
+          monthlyMap[month].purchases += Number(d.total_amount || 0);
+        } else if (d.type === 'sale') {
+          totalSale += Number(d.total_amount || 0);
+          monthlyMap[month].sales += Number(d.total_amount || 0);
         }
 
-        let query = supabase
-          .from('deals')
-          .select('id, party_id, type, total_amount, commodity, deal_date, parties(name, phone), payments(amount)')
-          .eq('user_id', user.id)
-          .eq('is_deleted', false);
+        const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+        const pending = Math.max(0, Number(d.total_amount || 0) - paid);
 
-        if (fromDate) query = query.gte('deal_date', fromDate);
-
-        const { data: fetchedDeals } = await query.order('deal_date');
-        setDeals(fetchedDeals || []);
-
-        let totalPurchase = 0;
-        let totalSale = 0;
-        const monthlyMap = {};
-        const partyPending = {};
-
-        (fetchedDeals || []).forEach((d) => {
-          const month = d.deal_date?.slice(0, 7) || 'Unknown';
-          if (!monthlyMap[month]) monthlyMap[month] = { purchases: 0, sales: 0 };
-
-          if (d.type === 'purchase') {
-            totalPurchase += Number(d.total_amount || 0);
-            monthlyMap[month].purchases += Number(d.total_amount || 0);
-          } else if (d.type === 'sale') {
-            totalSale += Number(d.total_amount || 0);
-            monthlyMap[month].sales += Number(d.total_amount || 0);
+        if (pending > 0) {
+          if (!partyPending[d.party_id]) {
+            partyPending[d.party_id] = {
+              party_id: d.party_id,
+              party_name: d.parties?.name || 'Unknown',
+              phone: d.parties?.phone || null,
+              purchase: 0,
+              sale: 0,
+            };
           }
+          if (d.type === 'purchase') partyPending[d.party_id].purchase += pending;
+          if (d.type === 'sale') partyPending[d.party_id].sale += pending;
+        }
+      });
 
-          const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-          const pending = Math.max(0, Number(d.total_amount || 0) - paid);
+      (fetchedExpenses || []).forEach((ex) => {
+        totalExpense += Number(ex.amount || 0);
+        const month = ex.expense_date?.slice(0, 7) || 'Unknown';
+        if (!monthlyMap[month]) monthlyMap[month] = { purchases: 0, sales: 0, expenses: 0 };
+        monthlyMap[month].expenses = (monthlyMap[month].expenses || 0) + Number(ex.amount || 0);
+      });
 
-          if (pending > 0) {
-            if (!partyPending[d.party_id]) {
-              partyPending[d.party_id] = {
-                party_id: d.party_id,
-                party_name: d.parties?.name || 'Unknown',
-                phone: d.parties?.phone || null,
-                purchase: 0,
-                sale: 0,
-              };
-            }
-            if (d.type === 'purchase') partyPending[d.party_id].purchase += pending;
-            if (d.type === 'sale') partyPending[d.party_id].sale += pending;
-          }
-        });
+      const chartData = Object.entries(monthlyMap).map(([month, vals]) => ({
+        name: month,
+        purchases: vals.purchases,
+        sales: vals.sales,
+      }));
 
-        const chartData = Object.entries(monthlyMap).map(([month, vals]) => ({
-          name: new Date(month + '-01').toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
-          purchases: vals.purchases,
-          sales: vals.sales,
-        }));
+      const toPay = [];
+      const toReceive = [];
+      const allPendingParties = [];
 
-        const toPay = [];
-        const toReceive = [];
-        const allPendingParties = [];
+      Object.values(partyPending).forEach((p) => {
+        if (p.purchase > 0) toPay.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: p.purchase });
+        if (p.sale > 0) toReceive.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: p.sale });
+        const totalP = p.purchase + p.sale;
+        if (totalP > 0) allPendingParties.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: totalP });
+      });
 
-        Object.values(partyPending).forEach((p) => {
-          if (p.purchase > 0) toPay.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: p.purchase });
-          if (p.sale > 0) toReceive.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: p.sale });
-          const totalP = p.purchase + p.sale;
-          if (totalP > 0) allPendingParties.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: totalP });
-        });
-
-        toPay.sort((a, b) => b.total_pending - a.total_pending);
-        toReceive.sort((a, b) => b.total_pending - a.total_pending);
-        allPendingParties.sort((a, b) => b.total_pending - a.total_pending);
-        setParties(allPendingParties);
-
-        setData({ totalPurchase, totalSale, net: totalSale - totalPurchase, chartData, toPay, toReceive });
-      } catch (err) {
-        console.error('Reports error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
+      setParties(allPendingParties);
+      setData({ 
+        totalPurchase, 
+        totalSale, 
+        totalExpense, 
+        net: totalSale - totalPurchase - totalExpense, 
+        chartData, 
+        toPay, 
+        toReceive 
+      });
+    } catch (err) {
+      console.error('Reports error:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [user, period]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleExportPDF = () => {
     exportReportPDF(data, period, user?.business_name || user?.name);
@@ -200,18 +237,22 @@ const Reports = ({ user }) => {
       ) : (
         <div className="px-4 pt-4 space-y-4">
           {/* Summary Cards */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-orange-50 rounded-2xl p-3 text-center border border-orange-100">
-              <p className="text-xs text-orange-500 font-semibold mb-1">Purchase</p>
-              <p className="text-base font-black text-orange-700 font-mono-amount leading-tight">{formatAmount(data?.totalPurchase)}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
+              <p className="text-xs text-orange-500 font-bold uppercase mb-1">Purchase</p>
+              <p className="text-xl font-black text-orange-700 font-mono-amount leading-tight">{formatAmount(data?.totalPurchase)}</p>
             </div>
-            <div className="bg-blue-50 rounded-2xl p-3 text-center border border-blue-100">
-              <p className="text-xs text-blue-500 font-semibold mb-1">Sales</p>
-              <p className="text-base font-black text-blue-700 font-mono-amount leading-tight">{formatAmount(data?.totalSale)}</p>
+            <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
+              <p className="text-xs text-blue-500 font-bold uppercase mb-1">Sales</p>
+              <p className="text-xl font-black text-blue-700 font-mono-amount leading-tight">{formatAmount(data?.totalSale)}</p>
             </div>
-            <div className={`rounded-2xl p-3 text-center border ${data?.net >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
-              <p className={`text-xs font-semibold mb-1 ${data?.net >= 0 ? 'text-green-600' : 'text-red-500'}`}>Net</p>
-              <p className={`text-base font-black font-mono-amount leading-tight ${data?.net >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatAmount(Math.abs(data?.net || 0))}</p>
+            <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
+              <p className="text-xs text-red-500 font-bold uppercase mb-1">Expenses</p>
+              <p className="text-xl font-black text-red-600 font-mono-amount leading-tight">{formatAmount(data?.totalExpense)}</p>
+            </div>
+            <div className={`rounded-2xl p-4 border shadow-sm ${data?.net >= 0 ? 'bg-green-600 border-green-500' : 'bg-red-600 border-red-500'}`}>
+              <p className="text-xs font-bold uppercase mb-1 text-white opacity-80">Net Profit</p>
+              <p className="text-xl font-black font-mono-amount leading-tight text-white">{formatAmount(data?.net)}</p>
             </div>
           </div>
 
@@ -272,12 +313,51 @@ const Reports = ({ user }) => {
             </div>
           )}
 
+          {/* Loan Installments */}
+          {loans.length > 0 && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2"><span>🏦</span> Loan Installments</h3>
+              <div className="space-y-3">
+                {loans.map((loan) => (
+                  <div key={loan.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <p className="text-sm font-semibold text-gray-700 truncate">{loan.party_name}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">
+                        {loan.loan_type} • {loan.direction}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 flex flex-col items-end">
+                      <p className="text-sm font-black text-gray-900">₹{formatAmount(loan.principal)}</p>
+                      <p className={`text-[10px] font-bold uppercase mb-1 ${
+                        new Date(loan.next_installment_date) < new Date() ? 'text-red-500' : 'text-orange-500'
+                      }`}>
+                        {loan.next_installment_date ? `Next: ${new Date(loan.next_installment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : 'No Date'}
+                      </p>
+                      {loan.direction === 'given' && (
+                        <a
+                          href={`https://wa.me/${(loan.phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(
+                            `Namaste ${loan.party_name} ji! 🙏\n\nVyaparBook Reminder: Aapka loan installment ₹${formatAmount(loan.principal)} ki date ${new Date(loan.next_installment_date).toLocaleDateString('en-IN')} hai. Please settle cheyyandi.\n\nDhanyawaad! 🙏`
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-green-500 text-white p-1.5 rounded-lg hover:bg-green-600 transition-colors"
+                        >
+                          <MessageCircle size={12} />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Empty state */}
-          {!data?.toPay?.length && !data?.toReceive?.length && (
+          {!data?.toPay?.length && !data?.toReceive?.length && loans.length === 0 && (
             <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
               <div className="text-3xl mb-2">✨</div>
               <p className="text-gray-500 font-medium">All clear!</p>
-              <p className="text-gray-400 text-sm">No pending amounts for this period</p>
+              <p className="text-gray-400 text-sm">No pending items for this period</p>
             </div>
           )}
         </div>
@@ -289,6 +369,7 @@ const Reports = ({ user }) => {
           parties={parties}
           businessName={user?.business_name || user?.name || 'VyaparBook'}
           onClose={() => setShowReminders(false)}
+          onUpdate={loadData}
         />
       )}
 

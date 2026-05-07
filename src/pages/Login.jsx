@@ -4,7 +4,7 @@ import {
   Leaf, Phone, User, Building2, ArrowRight, Loader2,
   Mail, Lock, Eye, EyeOff, ChevronLeft,
 } from 'lucide-react';
-import { getUserByPhone, supabase } from '../services/supabase';
+import { supabase } from '../services/supabase';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const ensureUserProfile = async (authUser) => {
@@ -26,6 +26,16 @@ const ensureUserProfile = async (authUser) => {
   }
 };
 
+// ── Input component helper ──────────────────────────────────────────────
+const InputRow = ({ icon: Icon, children }) => (
+  <div className="flex items-center border-2 border-gray-200 rounded-2xl overflow-hidden focus-within:border-green-500 transition-colors bg-white">
+    <div className="px-4 py-3.5 bg-gray-50 border-r-2 border-gray-200">
+      <Icon size={16} className="text-gray-400" />
+    </div>
+    {children}
+  </div>
+);
+
 const Login = ({ onLogin }) => {
   const navigate = useNavigate();
 
@@ -44,10 +54,13 @@ const Login = ({ onLogin }) => {
   const [signupPhone, setSignupPhone] = useState('');
 
   // Phone form
+  const [phoneStep, setPhoneStep] = useState('enter'); // 'enter' | 'otp' | 'register'
   const [phone, setPhone] = useState('');
-  const [phoneStep, setPhoneStep] = useState('enter'); // 'enter' | 'register'
+  const [otp, setOtp] = useState('');
+  const [linkedEmail, setLinkedEmail] = useState('');
   const [phoneName, setPhoneName] = useState('');
-  const [phoneBusiness, setPhoneBusiness] = useState('');
+  const [phoneEmail, setPhoneEmail] = useState('');
+  const [phonePassword, setPhonePassword] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -140,7 +153,7 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  // ── Phone Login (legacy, no-OTP) ────────────────────────────────────────
+  // ── Phone Login (Email OTP Proxy) ────────────────────────────────────────
   const handlePhoneSubmit = async (e) => {
     e.preventDefault();
     const cleanPhone = phone.replace(/\D/g, '');
@@ -152,16 +165,69 @@ const Login = ({ onLogin }) => {
     setError('');
     try {
       const fullPhone = `+91${cleanPhone.slice(-10)}`;
-      const { data: existingUser } = await getUserByPhone(fullPhone);
-      if (existingUser) {
-        localStorage.setItem('vyapar_user', JSON.stringify(existingUser));
-        onLogin(existingUser);
-        navigate('/');
+      
+      // Look up if this phone exists in public.users
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id, email, name')
+        .eq('phone', fullPhone)
+        .maybeSingle();
+
+      if (existingUser && existingUser.email) {
+        // They have an email! Send OTP
+        const { error: otpErr } = await supabase.auth.signInWithOtp({
+          email: existingUser.email,
+        });
+        if (otpErr) throw new Error(otpErr.message);
+        
+        setLinkedEmail(existingUser.email);
+        setSuccessMsg(`OTP sent to ${existingUser.email}`);
+        setPhoneStep('otp');
+      } else if (existingUser && !existingUser.email) {
+         // Legacy user with NO email. They MUST upgrade now.
+         setPhoneStep('register');
+         setError('Your account needs a security upgrade. Please set an email and password.');
       } else {
+        // Brand new user
         setPhoneStep('register');
       }
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err) {
+      setError('Error checking phone: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (otp.length < 6) return setError('Enter 6-digit OTP');
+    
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: linkedEmail,
+        token: otp,
+        type: 'email',
+      });
+      if (error) throw new Error(error.message);
+
+      if (data.session) {
+        const authUser = data.user;
+        await ensureUserProfile(authUser);
+        const userData = {
+          id: authUser.id,
+          email: authUser.email,
+          name: authUser.user_metadata?.name || '',
+          phone: authUser.user_metadata?.phone || '',
+          business_name: authUser.user_metadata?.business_name || '',
+        };
+        localStorage.setItem('vyapar_user', JSON.stringify(userData));
+        onLogin(userData);
+        navigate('/');
+      }
+    } catch (err) {
+      setError(err.message || 'Invalid OTP');
     } finally {
       setLoading(false);
     }
@@ -169,44 +235,56 @@ const Login = ({ onLogin }) => {
 
   const handlePhoneRegister = async (e) => {
     e.preventDefault();
-    if (!phoneName.trim()) {
-      setError('Please enter your name');
+    if (!phoneName.trim() || !phoneEmail.trim() || !phonePassword.trim()) {
+      setError('Name, Email and Password are required for security');
       return;
     }
+    if (phonePassword.length < 6) return setError('Password must be 6+ chars');
+    
     setLoading(true);
     setError('');
     try {
       const cleanPhone = phone.replace(/\D/g, '');
       const fullPhone = `+91${cleanPhone.slice(-10)}`;
-      const { data: newUser, error: createError } = await supabase
-        .from('users')
-        .insert([{
-          phone: fullPhone,
-          name: phoneName.trim(),
-          business_name: phoneBusiness.trim() || phoneName.trim(),
-        }])
-        .select()
-        .single();
-      if (createError) throw new Error(createError.message);
-      localStorage.setItem('vyapar_user', JSON.stringify(newUser));
-      onLogin(newUser);
-      navigate('/');
+      
+      const { data, error: authErr } = await supabase.auth.signUp({
+        email: phoneEmail.trim(),
+        password: phonePassword.trim(),
+        options: {
+          data: {
+            name: phoneName.trim(),
+            business_name: phoneName.trim(),
+            phone: fullPhone,
+          },
+        },
+      });
+      if (authErr) throw new Error(authErr.message);
+
+      if (data.session) {
+        const authUser = data.user;
+        await ensureUserProfile(authUser);
+        const userData = {
+          id: authUser.id,
+          email: authUser.email,
+          name: authUser.user_metadata?.name,
+          phone: authUser.user_metadata?.phone,
+          business_name: authUser.user_metadata?.business_name,
+        };
+        localStorage.setItem('vyapar_user', JSON.stringify(userData));
+        onLogin(userData);
+        navigate('/');
+      } else {
+        setSuccessMsg('Account secured! Check your email to verify.');
+        setTab('email');
+        setEmailMode('login');
+      }
     } catch (err) {
-      setError(err.message || 'Registration failed. Please try again.');
+      setError(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Input component helper ──────────────────────────────────────────────
-  const InputRow = ({ icon: Icon, children }) => (
-    <div className="flex items-center border-2 border-gray-200 rounded-2xl overflow-hidden focus-within:border-green-500 transition-colors bg-white">
-      <div className="px-4 py-3.5 bg-gray-50 border-r-2 border-gray-200">
-        <Icon size={16} className="text-gray-400" />
-      </div>
-      {children}
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-600 via-green-500 to-emerald-400 flex flex-col">
@@ -404,14 +482,36 @@ const Login = ({ onLogin }) => {
                   For security, we recommend <button type="button" onClick={() => setTab('email')} className="text-green-600 font-semibold">Email Login</button>
                 </p>
               </form>
+            ) : phoneStep === 'otp' ? (
+              <form onSubmit={handleVerifyOtp}>
+                <button type="button" onClick={() => { setPhoneStep('enter'); setError(''); }}
+                  className="flex items-center gap-1 text-sm text-green-600 font-medium mb-4">
+                  <ChevronLeft size={16} /> Back
+                </button>
+                <h2 className="text-2xl font-bold text-gray-900 mb-1">Verify OTP 🔢</h2>
+                <p className="text-gray-500 text-sm mb-5">Enter the 6-digit code sent to {linkedEmail}</p>
+                <div className="mb-4">
+                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">6-Digit Code</label>
+                  <InputRow icon={Lock}>
+                    <input type="text" value={otp} onChange={(e) => { setOtp(e.target.value); setError(''); }}
+                      placeholder="123456" maxLength={6}
+                      className="flex-1 px-4 py-3.5 text-base font-medium outline-none tracking-widest" autoFocus />
+                  </InputRow>
+                </div>
+                {error && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-xl px-3 py-2">⚠️ {error}</p>}
+                <button type="submit" disabled={loading}
+                  className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-2xl text-base flex items-center justify-center gap-2 shadow-lg shadow-green-200 disabled:opacity-60">
+                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>Verify Secure Login</span><ArrowRight size={20} /></>}
+                </button>
+              </form>
             ) : (
               <form onSubmit={handlePhoneRegister}>
                 <button type="button" onClick={() => { setPhoneStep('enter'); setError(''); }}
                   className="flex items-center gap-1 text-sm text-green-600 font-medium mb-4">
                   <ChevronLeft size={16} /> Back
                 </button>
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">Create Account ✨</h2>
-                <p className="text-gray-500 text-sm mb-5">New user — tell us about yourself</p>
+                <h2 className="text-2xl font-bold text-gray-900 mb-1">Secure Account ✨</h2>
+                <p className="text-gray-500 text-sm mb-5">To keep your data safe, we need an email</p>
                 <div className="space-y-3 mb-4">
                   <div>
                     <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Your Name *</label>
@@ -421,10 +521,20 @@ const Login = ({ onLogin }) => {
                     </InputRow>
                   </div>
                   <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Business Name (optional)</label>
-                    <InputRow icon={Building2}>
-                      <input type="text" value={phoneBusiness} onChange={(e) => setPhoneBusiness(e.target.value)}
-                        placeholder="Ravi Rice Mills" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
+                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Email Address *</label>
+                    <InputRow icon={Mail}>
+                      <input type="email" value={phoneEmail} onChange={(e) => { setPhoneEmail(e.target.value); setError(''); }}
+                        placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
+                    </InputRow>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Secure Password *</label>
+                    <InputRow icon={Lock}>
+                      <input type={showPass ? 'text' : 'password'} value={phonePassword} onChange={(e) => { setPhonePassword(e.target.value); setError(''); }}
+                        placeholder="••••••••" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
+                      <button type="button" onClick={() => setShowPass(!showPass)} className="pr-4">
+                        {showPass ? <EyeOff size={16} className="text-gray-400" /> : <Eye size={16} className="text-gray-400" />}
+                      </button>
                     </InputRow>
                   </div>
                 </div>

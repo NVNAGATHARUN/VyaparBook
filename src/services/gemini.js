@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from './supabase';
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+const PROXY_URL = 'https://oagihzckckjckkddvwwd.supabase.co/functions/v1/ai-proxy';
 
 const GEMINI_PROMPT = `
 You are VyaparBook AI — an accounting assistant for Indian traders dealing in rice, paddy, and grains.
@@ -50,18 +50,36 @@ Now parse this text:
 `;
 
 /**
- * Parse voice transcription into structured deal data using Gemini
+ * Parse voice transcription into structured deal data using Gemini proxy
  * @param {string} text - Transcribed text
  * @returns {Promise<{data: Object, error: string|null}>}
  */
 export const parseTransaction = async (text) => {
   const tryParse = async (modelName) => {
-    console.log(`Attempting Gemini parse with model: ${modelName}`);
-    const model = genAI.getGenerativeModel({ model: modelName });
+    console.log(`Attempting Gemini parse via proxy with model: ${modelName}`);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error("Not authenticated");
+
     const prompt = GEMINI_PROMPT + `"${text}"`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let responseText = response.text().trim();
+    
+    const response = await fetch(`${PROXY_URL}?provider=gemini`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        endpoint: `/models/${modelName}:generateContent`,
+        body: {
+          contents: [{ parts: [{ text: prompt }] }]
+        }
+      })
+    });
+
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Gemini proxy error');
+
+    let responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
     // Strip markdown code blocks if present
     responseText = responseText

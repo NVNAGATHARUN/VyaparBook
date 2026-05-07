@@ -147,6 +147,13 @@ Examples:
 - "namaste", "hii", "helo"
 - "how are you"
 
+THANK_YOU:
+User expressing gratitude.
+Examples:
+- "thank you", "thanks", "dhanyawaad"
+- "shukriya", "thank u"
+- "thanks for help"
+
 UNKNOWN:
 Cannot understand or off-topic.
 
@@ -204,8 +211,11 @@ const inferIntentFromText = (message) => {
   const text = (message || '').toLowerCase().trim()
   const startsLikeQuery = /^(show|give me|tell me|what|how much|list|all|which|who)/.test(text)
 
-  if (/^(hi|hello|hey|good morning|good evening|good afternoon|namaste)\b/.test(text)) {
+  if (/^(hi|hello|hey|good morning|good evening|good afternoon|namaste|hii|helo)\b/.test(text)) {
     return 'GREETING'
+  }
+  if (/thank you|thanks|dhanyawaad|shukriya/.test(text)) {
+    return 'THANK_YOU'
   }
   if (/feature|help|what can you do|how to use|vyaparbook/.test(text)) {
     return 'QUERY_FEATURES'
@@ -248,7 +258,7 @@ export const detectIntent = async (message, context = null) => {
       result = await primaryModel.generateContent(
         INTENT_PROMPT + contextPrompt + message
       )
-    } catch (primaryError) {
+    } catch {
       // Some keys/projects only expose the "-latest" alias.
       const fallbackModel = genAI.getGenerativeModel({
         model: 'gemini-1.5-flash-latest'
@@ -296,5 +306,5 @@ export const isActionIntent = (intent) => {
 }
 
 export const isSocialIntent = (intent) => {
-  return intent.intent === 'GREETING'
+  return intent.intent === 'GREETING' || intent.intent === 'THANK_YOU'
 }

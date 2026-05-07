@@ -16,6 +16,9 @@ import AddDeal from './pages/AddDeal';
 import AddPayment from './pages/AddPayment';
 import Stock from './pages/Stock';
 import Reports from './pages/Reports';
+import Tools from './pages/Tools';
+import Expenses from './pages/Expenses';
+import Loans from './pages/Loans';
 
 // Components
 import BottomNav from './components/common/BottomNav';
@@ -49,7 +52,7 @@ const App = () => {
           setLoading(false);
           return;
         }
-      } catch (_) { /* ignore */ }
+      } catch { /* ignore */ }
 
       // Fallback: legacy phone-login users stored in localStorage
       const stored = localStorage.getItem('vyapar_user');
@@ -67,7 +70,7 @@ const App = () => {
 
     // Listen for auth state changes (login/logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!mounted) return;
         if (session?.user) {
           const authUser = session.user;
@@ -127,7 +130,7 @@ const App = () => {
     // Sign out from Supabase Auth (for email users)
     try {
       await supabase.auth.signOut();
-    } catch (_) { /* ignore if no session */ }
+    } catch { /* ignore if no session */ }
     localStorage.removeItem('vyapar_user');
     setUser(null);
   };
@@ -180,6 +183,9 @@ const App = () => {
               <Route path="/payments/add" element={<AddPayment user={user} />} />
               <Route path="/stock" element={<Stock user={user} />} />
               <Route path="/reports" element={<Reports user={user} />} />
+              <Route path="/tools" element={<Tools user={user} />} />
+              <Route path="/expenses" element={<Expenses user={user} />} />
+              <Route path="/loans" element={<Loans user={user} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           )}

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Phone, Plus, Banknote, FileText, Download,
   MoreVertical, Edit3, Trash2, MessageCircle, Share2,
 } from 'lucide-react';
-import { getPartyById, getDealsByParty, softDeleteDeal } from '../services/supabase';
+import { getPartyById, getDealsByParty, softDeleteDeal, updateParty } from '../services/supabase';
 import { exportPartyLedgerPDF, exportPartyLedgerExcel } from '../services/exportService';
 import DealEditModal from '../components/deals/DealEditModal';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -29,6 +29,11 @@ const PartyDetail = ({ user }) => {
 
   // Export menu
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // Phone editing
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [newPhone, setNewPhone] = useState('');
+  const [updatingPhone, setUpdatingPhone] = useState(false);
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -113,6 +118,22 @@ const PartyDetail = ({ user }) => {
     showToast('📊 Excel downloaded!');
   };
 
+  const handleUpdatePhone = async () => {
+    if (!newPhone || newPhone.length < 10) return;
+    setUpdatingPhone(true);
+    try {
+      const { error } = await updateParty(id, { phone: newPhone });
+      if (error) throw error;
+      setEditingPhone(false);
+      showToast('✅ Phone number updated');
+      loadData();
+    } catch (err) {
+      showToast('❌ Update failed: ' + err.message, 'error');
+    } finally {
+      setUpdatingPhone(false);
+    }
+  };
+
   const handleShare = async () => {
     const text =
       `*${party?.name} — VyaparBook Ledger*\n\n` +
@@ -147,10 +168,55 @@ const PartyDetail = ({ user }) => {
               <h1 className="text-white text-xl font-black truncate">{party?.name}</h1>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full capitalize">{party?.type}</span>
-                {party?.phone && (
-                  <a href={`tel:${party.phone}`} className="flex items-center gap-1 text-green-100 text-xs">
-                    <Phone size={11} /> {party.phone}
-                  </a>
+                {editingPhone ? (
+                  <div className="flex items-center gap-1 mt-1">
+                    <input
+                      type="tel"
+                      autoFocus
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      placeholder="Phone number"
+                      className="bg-white/20 border border-white/30 text-white text-xs px-2 py-1 rounded-lg outline-none placeholder-white/50 w-32"
+                    />
+                    <button
+                      onClick={handleUpdatePhone}
+                      disabled={updatingPhone || !newPhone}
+                      className="bg-white text-green-600 text-[10px] font-bold px-2 py-1 rounded-lg disabled:opacity-50"
+                    >
+                      {updatingPhone ? '...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => setEditingPhone(false)}
+                      className="text-white text-[10px] font-bold px-1"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : party?.phone ? (
+                  <div className="flex items-center gap-2">
+                    <a href={`tel:${party.phone}`} className="flex items-center gap-1 text-green-100 text-xs">
+                      <Phone size={11} /> {party.phone}
+                    </a>
+                    <button
+                      onClick={() => {
+                        setEditingPhone(true);
+                        setNewPhone(party.phone);
+                      }}
+                      className="text-green-100/60 hover:text-white"
+                    >
+                      <Edit3 size={11} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditingPhone(true);
+                      setNewPhone('');
+                    }}
+                    className="text-green-100/80 text-xs flex items-center gap-1 hover:text-white transition-colors"
+                  >
+                    <Plus size={11} /> Add Mobile
+                  </button>
                 )}
               </div>
             </div>

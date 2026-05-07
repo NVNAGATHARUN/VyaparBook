@@ -23,7 +23,7 @@ const getPendingSession = async (phone) => {
   // Expire stale sessions (older than 10 minutes)
   try {
     await supabase.rpc('expire_whatsapp_sessions')
-  } catch (_) { /* ignore if RPC not defined */ }
+  } catch { /* ignore if RPC not defined */ }
 
   const { data } = await supabase
     .from('whatsapp_sessions')
@@ -199,18 +199,24 @@ Example: *2350*`
         return `❌ Party "${parsed.party_name}" nahi mili. Pehle deal create karo.`
       }
 
-      const { data: deals } = await getDealsByParty(partyRecord.id)
-      const openDeal = (deals || []).find(d => {
-        const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0)
-        return Number(d.total_amount) - paid > 0
-      })
+      const { data: deals } = await getDealsByParty(partyRecord.id);
+      // Import computePending dynamically since this runs in node/edge sometimes
+      const computePending = (d) => {
+        const paid = (d.payments || []).reduce((s, p) => s + Number(p.amount), 0);
+        return Math.max(0, Number(d.total_amount) - paid);
+      };
 
-      if (!openDeal && (!deals || deals.length === 0)) {
-        await rejectSession(session.id)
-        return `❌ ${partyRecord.name} ke liye koi open deal nahi hai. Pehle deal create karo.`
+      // Filter strictly to OPEN deals, sort by oldest first (FIFO)
+      const openDeals = (deals || [])
+        .filter(d => computePending(d) > 0)
+        .sort((a, b) => new Date(a.deal_date) - new Date(b.deal_date));
+
+      if (openDeals.length === 0) {
+        await rejectSession(session.id);
+        return `❌ ${partyRecord.name} ke liye koi pending bill nahi hai. Pehle naya deal add karo.`;
       }
 
-      const dealId = openDeal?.id || deals[0].id
+      const dealId = openDeals[0].id;
       const { error } = await supabase
         .from('payments')
         .insert([{
@@ -247,60 +253,28 @@ _VyaparBook mein save ho gaya!_ 🎉`
 
       if (!partyRecord) throw new Error('Party create failed')
 
-      const { error: dealError } = await supabase
-        .from('deals')
-        .insert([{
-          user_id: user.id,
-          party_id: partyRecord.id,
-          type: parsed.type || 'purchase',
-          commodity: parsed.commodity || null,
-          quantity: parsed.quantity || null,
-          unit: parsed.unit || null,
-          rate: parsed.rate || null,
-          total_amount: parsed.total_amount,
-          advance_paid: parsed.advance_paid || 0,
-          pending_amount: parsed.pending_amount || parsed.total_amount,
-          deal_date: new Date().toISOString().split('T')[0],
-          notes: parsed.notes || null
-        }])
+      // Use atomic deal creation to guarantee consistency
+      const { error: dealError } = await supabase.rpc('create_deal_atomic', {
+        p_party_id: partyRecord.id,
+        p_type: parsed.type || 'purchase',
+        p_commodity: parsed.commodity || null,
+        p_quantity: Number(parsed.quantity) || 0,
+        p_unit: parsed.unit || null,
+        p_rate: Number(parsed.rate) || 0,
+        p_total_amount: Number(parsed.total_amount),
+        p_advance_paid: Number(parsed.advance_paid) || 0,
+        p_deal_date: new Date().toISOString().split('T')[0],
+        p_source: 'whatsapp',
+        p_payment_mode: 'cash',
+        p_notes: parsed.notes || null
+      });
 
-      if (dealError) throw dealError
-
-      // Update stock if commodity present
-      if (parsed.commodity && parsed.quantity) {
-        await supabase.rpc('upsert_stock', {
-          p_user_id: user.id,
-          p_commodity: parsed.commodity.toLowerCase(),
-          p_unit: parsed.unit || 'unit',
-          p_quantity: parsed.quantity,
-          p_type: parsed.type
-        }).catch(() => { /* stock RPC optional */ })
+      if (dealError) {
+        console.error('[deal_atomic_error]', dealError.message, { userId: user.id, party: partyRecord.id });
+        throw dealError;
       }
 
-      // Save advance payment if any
-      if (parsed.advance_paid && parsed.advance_paid > 0) {
-        // Get the deal we just created
-        const { data: newDeal } = await supabase
-          .from('deals')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('party_id', partyRecord.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (newDeal) {
-          await supabase
-            .from('payments')
-            .insert([{
-              deal_id: newDeal.id,
-              user_id: user.id,
-              amount: parsed.advance_paid,
-              payment_mode: 'advance',
-              payment_date: new Date().toISOString().split('T')[0]
-            }])
-        }
-      }
+      // Advance payment and stock are already handled by createDealAtomic
 
       await supabase
         .from('whatsapp_sessions')
@@ -382,7 +356,7 @@ Phir WhatsApp pe sab kuch kar sakte ho!`
   if (message_type === 'audio' && audio_url) {
     try {
       messageText = await transcribeAudio(audio_url)
-    } catch (err) {
+    } catch {
       return `❌ Audio samajh nahi aaya.
 Text mein likh ke bhejo ya dubara try karo.`
     }

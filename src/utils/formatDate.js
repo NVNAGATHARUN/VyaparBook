@@ -11,6 +11,17 @@ export const formatDate = (date) => {
 };
 
 /**
+ * Format date in DD MMM format (short)
+ */
+export const formatDateShort = (date) => {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+  });
+};
+
+/**
  * Format date with month name
  */
 export const formatDateLong = (date) => {

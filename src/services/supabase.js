@@ -128,6 +128,24 @@ export const softDeleteDeal = async (dealId, userId) => {
   return { error };
 };
 
+export const createDealAtomic = async (params) => {
+  const { data, error } = await supabase.rpc('create_deal_atomic', {
+    p_party_id: params.party_id,
+    p_type: params.type,
+    p_commodity: params.commodity,
+    p_quantity: params.quantity,
+    p_unit: params.unit,
+    p_rate: params.rate,
+    p_total_amount: params.total_amount,
+    p_advance_paid: params.advance_paid,
+    p_deal_date: params.deal_date,
+    p_source: params.source || 'pwa',
+    p_payment_mode: params.payment_mode || 'cash',
+    p_notes: params.notes || null,
+  });
+  return { data, error };
+};
+
 export const getDealSummary = async (userId) => {
   const { data, error } = await supabase
     .from('deal_summary')

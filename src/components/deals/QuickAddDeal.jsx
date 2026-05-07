@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2, CheckCircle } from 'lucide-react';
-import { getParties, createDeal, createPayment, upsertStock } from '../../services/supabase';
+import { getParties, createDealAtomic } from '../../services/supabase';
 import { formatAmount } from '../../utils/formatAmount';
 
 const UNITS = ['bags', 'lorry', 'quintal', 'ton', 'kg'];
@@ -61,8 +61,7 @@ const QuickAddDeal = ({ user, onSaved }) => {
     setSaving(true);
     setError('');
     try {
-      const { data: deal, error: dErr } = await createDeal({
-        user_id: user.id,
+      const { error: dErr } = await createDealAtomic({
         party_id: form.party_id,
         type: form.type,
         commodity: form.commodity,
@@ -70,24 +69,13 @@ const QuickAddDeal = ({ user, onSaved }) => {
         unit: form.unit,
         rate: Number(form.rate) || 0,
         total_amount: Number(form.total_amount),
+        advance_paid: Number(form.advance_paid) || 0,
         deal_date: form.deal_date,
         source: 'pwa',
+        payment_mode: 'cash',
       });
+      
       if (dErr) throw new Error(dErr.message);
-
-      if (Number(form.advance_paid) > 0) {
-        await createPayment({
-          deal_id: deal.id,
-          user_id: user.id,
-          amount: Number(form.advance_paid),
-          payment_mode: 'cash',
-          payment_date: form.deal_date,
-        });
-      }
-
-      if (form.commodity && Number(form.quantity) > 0) {
-        await upsertStock(user.id, form.commodity, form.unit, Number(form.quantity), form.type);
-      }
 
       // Flash success, reset form
       setSaved(true);
