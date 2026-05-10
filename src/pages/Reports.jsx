@@ -6,7 +6,7 @@ import ProfitChart from '../components/charts/ProfitChart';
 import BulkReminderSheet from '../components/reminders/BulkReminderSheet';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatAmount } from '../utils/formatAmount';
-import { FileText, Download, MessageCircle, ChevronDown, TrendingUp, DollarSign, Wallet } from 'lucide-react';
+import { FileText, Download, MessageCircle, ChevronDown, TrendingUp, DollarSign, Wallet, Package } from 'lucide-react';
 
 const periods = [
   { label: 'This Month', value: 'month' },
@@ -132,6 +132,26 @@ const Reports = ({ user }) => {
         if (totalP > 0) allPendingParties.push({ party_id: p.party_id, party_name: p.party_name, phone: p.phone, total_pending: totalP });
       });
 
+      const commodityStats = {};
+      (fetchedDeals || []).forEach((d) => {
+        const comm = (d.commodity || 'other').toLowerCase();
+        if (!commodityStats[comm]) {
+          commodityStats[comm] = { name: comm, purchase: 0, sale: 0, volume: 0, unit: d.unit };
+        }
+        if (d.type === 'purchase') {
+          commodityStats[comm].purchase += Number(d.total_amount);
+          commodityStats[comm].volume += Number(d.quantity);
+        } else {
+          commodityStats[comm].sale += Number(d.total_amount);
+          commodityStats[comm].volume -= Number(d.quantity);
+        }
+      });
+
+      const commodityProfit = Object.values(commodityStats).map(c => ({
+        ...c,
+        profit: c.sale - c.purchase
+      })).sort((a, b) => b.profit - a.profit);
+
       setParties(allPendingParties);
       setData({ 
         totalPurchase, 
@@ -140,7 +160,8 @@ const Reports = ({ user }) => {
         net: totalSale - totalPurchase - totalExpense, 
         chartData, 
         toPay, 
-        toReceive 
+        toReceive,
+        commodityProfit
       });
     } catch (err) {
       console.error('Reports error:', err);
@@ -257,6 +278,52 @@ const Reports = ({ user }) => {
 
           {/* Charts */}
           <ProfitChart data={detailedData} title="Profit Trends" />
+          
+          {/* Commodity Profitability */}
+          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-gray-900 flex items-center gap-2 text-lg">
+                <Package className="text-orange-500" size={20} /> Crop Profitability
+              </h3>
+            </div>
+            <div className="space-y-3">
+              {(data?.commodityProfit || []).map((cp) => (
+                <div key={cp.name} className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-sm font-black text-gray-900 capitalize">{cp.name}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                        Net Volume: {cp.volume} {cp.unit}
+                      </p>
+                    </div>
+                    <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      cp.profit >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {cp.profit >= 0 ? 'Profit' : 'Loss'}
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <p className={`text-lg font-black font-mono-amount ${
+                      cp.profit >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {formatAmount(cp.profit)}
+                    </p>
+                    <div className="flex gap-4 text-right">
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Bought</p>
+                        <p className="text-xs font-bold text-gray-600">{formatAmount(cp.purchase)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase">Sold</p>
+                        <p className="text-xs font-bold text-gray-600">{formatAmount(cp.sale)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <BusinessChart data={data?.chartData} title="Purchase vs Sales Breakdown" />
 
           {/* Total pending banner */}
