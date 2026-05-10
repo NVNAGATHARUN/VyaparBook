@@ -62,7 +62,7 @@ const Reports = ({ user }) => {
         { data: fetchedLoans },
         detailedChartData
       ] = await Promise.all([
-        supabase.from('deals').select('id, party_id, type, total_amount, commodity, deal_date, parties(name, phone), payments(amount)').eq('user_id', user.id).gte('deal_date', fromDate || '2000-01-01').order('deal_date'),
+        supabase.from('deals').select('id, party_id, type, total_amount, commodity, deal_date, parties(name, phone), payments(amount)').eq('user_id', user.id).eq('is_deleted', false).gte('deal_date', fromDate || '2000-01-01').order('deal_date'),
         supabase.from('expenses').select('amount, expense_date').eq('user_id', user.id).gte('expense_date', fromDate || '2000-01-01'),
         supabase.from('loans').select('*').eq('user_id', user.id).eq('status', 'active').order('next_installment_date'),
         getDetailedReports(user.id)

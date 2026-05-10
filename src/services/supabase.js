@@ -86,6 +86,7 @@ export const getDeals = async (userId, limit = 50) => {
     .from('deals')
     .select('*, parties(name, type)')
     .eq('user_id', userId)
+    .eq('is_deleted', false)
     .order('deal_date', { ascending: false })
     .limit(limit);
   return { data, error };
@@ -96,6 +97,7 @@ export const getDealsByParty = async (partyId) => {
     .from('deals')
     .select('*, payments(*)')
     .eq('party_id', partyId)
+    .eq('is_deleted', false)
     .order('deal_date', { ascending: false });
   return { data, error };
 };
@@ -287,7 +289,7 @@ export const getDashboardSummary = async (userId) => {
     { data: deals, error: dealErr },
     { data: expenses, error: expErr }
   ] = await Promise.all([
-    supabase.from('deals').select('total_amount, type, deal_date, payments(amount)').eq('user_id', userId),
+    supabase.from('deals').select('total_amount, type, deal_date, payments(amount)').eq('user_id', userId).eq('is_deleted', false),
     supabase.from('expenses').select('amount').eq('user_id', userId)
   ]);
 
@@ -340,7 +342,7 @@ export const getDetailedReports = async (userId) => {
     { data: deals, error: dealErr },
     { data: expenses, error: expErr }
   ] = await Promise.all([
-    supabase.from('deals').select('total_amount, type, deal_date').eq('user_id', userId).gte('deal_date', startDate),
+    supabase.from('deals').select('total_amount, type, deal_date, commodity').eq('user_id', userId).eq('is_deleted', false).gte('deal_date', startDate),
     supabase.from('expenses').select('amount, expense_date, category').eq('user_id', userId).gte('expense_date', startDate)
   ]);
 
@@ -389,7 +391,8 @@ export const getPartySummary = async (userId) => {
   const { data: deals, error } = await supabase
     .from('deals')
     .select('party_id, total_amount, type, payments(amount)')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .eq('is_deleted', false);
 
   if (error) return { data: [], error };
 
@@ -419,6 +422,7 @@ export const getRecentTransactions = async (userId, limit = 10) => {
     .from('deals')
     .select('*, parties(name)')
     .eq('user_id', userId)
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .limit(limit);
 
