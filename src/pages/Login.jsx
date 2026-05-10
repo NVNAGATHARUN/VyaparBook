@@ -1,14 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Leaf, Phone, User, Building2, ArrowRight, Loader2,
-  Mail, Lock, Eye, EyeOff, ChevronLeft,
+  Mail, Lock, Eye, EyeOff, ChevronLeft, CheckCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 const ensureUserProfile = async (authUser) => {
-  // Create/sync a row in public.users for RLS-compatible queries
   const { data: existing } = await supabase
     .from('users')
     .select('id')
@@ -18,17 +17,21 @@ const ensureUserProfile = async (authUser) => {
   if (!existing) {
     await supabase.from('users').insert([{
       id: authUser.id,
-      name: authUser.user_metadata?.name || authUser.email?.split('@')[0],
-      email: authUser.email,
+      name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Trader',
+      email: authUser.email?.includes('@vyapar.internal') ? null : authUser.email,
       phone: authUser.user_metadata?.phone || null,
       business_name: authUser.user_metadata?.business_name || null,
-    }]).select().single();
+    }]);
   }
 };
 
-// ── Input component helper ──────────────────────────────────────────────
+const getPhoneEmail = (phone) => {
+  const clean = phone.replace(/\D/g, '').slice(-10);
+  return `p+91${clean}@vyapar.internal`;
+};
+
 const InputRow = ({ icon: Icon, children }) => (
-  <div className="flex items-center border-2 border-gray-200 rounded-2xl overflow-hidden focus-within:border-green-500 transition-colors bg-white">
+  <div className="flex items-center border-2 border-gray-200 rounded-2xl overflow-hidden focus-within:border-green-500 transition-colors bg-white shadow-sm">
     <div className="px-4 py-3.5 bg-gray-50 border-r-2 border-gray-200">
       <Icon size={16} className="text-gray-400" />
     </div>
@@ -39,160 +42,136 @@ const InputRow = ({ icon: Icon, children }) => (
 const Login = ({ onLogin }) => {
   const navigate = useNavigate();
 
-  // tab: 'email' | 'phone'
+  // View state: 'login' | 'signup' | 'forgot' | 'verify'
+  const [mode, setMode] = useState('login');
+  // Tab: 'email' | 'phone'
   const [tab, setTab] = useState('email');
-  // emailMode: 'login' | 'signup'
-  const [emailMode, setEmailMode] = useState('login');
-
-  // Email form
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
-  // Signup extra fields
-  const [name, setName] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [signupPhone, setSignupPhone] = useState('');
-
-  // Phone form
-  const [phoneStep, setPhoneStep] = useState('enter'); // 'enter' | 'otp' | 'register'
-  const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [linkedEmail, setLinkedEmail] = useState('');
-  const [phoneName, setPhoneName] = useState('');
-  const [phoneEmail, setPhoneEmail] = useState('');
-  const [phonePassword, setPhonePassword] = useState('');
-
+  
+  // Auth state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [success, setSuccess] = useState('');
+  const [showPass, setShowPass] = useState(false);
 
-  // ── Email Login ─────────────────────────────────────────────────────────
-  const handleEmailLogin = async (e) => {
+  // Form Fields
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [otp, setOtp] = useState('');
+  const [tempUserId, setTempUserId] = useState(null);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError('Please enter your email and password');
-      return;
-    }
+    const loginIdentifier = tab === 'email' ? email.trim() : getPhoneEmail(phone);
+    if (!loginIdentifier || !password) return setError('All fields are required');
+
     setLoading(true);
     setError('');
     try {
       const { data, error: authErr } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password.trim(),
+        email: loginIdentifier,
+        password: password,
       });
-      if (authErr) throw new Error(authErr.message);
+
+      if (authErr) throw authErr;
+
       const authUser = data.user;
       await ensureUserProfile(authUser);
+      
       const userData = {
         id: authUser.id,
         email: authUser.email,
-        name: authUser.user_metadata?.name || authUser.email.split('@')[0],
+        name: authUser.user_metadata?.name || 'Trader',
         phone: authUser.user_metadata?.phone || '',
         business_name: authUser.user_metadata?.business_name || '',
       };
-      localStorage.setItem('vyapar_user', JSON.stringify(userData));
+      
       onLogin(userData);
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Login failed. Check your credentials.');
+      setError(err.message || 'Login failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Email Signup ────────────────────────────────────────────────────────
-  const handleEmailSignup = async (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim() || !name.trim()) {
-      setError('Name, email and password are required');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
+    if (tab === 'email' && (!email || !password || !name)) return setError('All fields are required');
+    if (tab === 'phone' && (!phone || !password || !name)) return setError('All fields are required');
+    if (password.length < 6) return setError('Password must be at least 6 characters');
+
     setLoading(true);
     setError('');
     try {
+      const loginIdentifier = tab === 'email' ? email.trim() : getPhoneEmail(phone);
+      const displayPhone = tab === 'phone' ? `+91${phone.replace(/\D/g, '').slice(-10)}` : '';
+
       const { data, error: authErr } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password.trim(),
+        email: loginIdentifier,
+        password: password,
         options: {
           data: {
             name: name.trim(),
             business_name: businessName.trim() || name.trim(),
-            phone: signupPhone.trim() ? `+91${signupPhone.trim().slice(-10)}` : '',
+            phone: displayPhone,
           },
         },
       });
-      if (authErr) throw new Error(authErr.message);
 
-      // If email confirmation is disabled (dev mode), user is logged in immediately
+      if (authErr) throw authErr;
+
       if (data.session) {
-        const authUser = data.user;
-        await ensureUserProfile(authUser);
-        const userData = {
-          id: authUser.id,
-          email: authUser.email,
-          name: authUser.user_metadata?.name || name.trim(),
-          phone: authUser.user_metadata?.phone || '',
-          business_name: authUser.user_metadata?.business_name || '',
-        };
-        localStorage.setItem('vyapar_user', JSON.stringify(userData));
-        onLogin(userData);
+        // Logged in immediately (email verification disabled)
+        await ensureUserProfile(data.user);
+        onLogin({
+          id: data.user.id,
+          name: name.trim(),
+          email: data.user.email,
+          phone: displayPhone
+        });
         navigate('/');
       } else {
-        // Email confirmation required
-        setSuccessMsg('✅ Account created! Check your email to confirm, then login.');
-        setEmailMode('login');
+        setSuccess(tab === 'email' ? '✅ Verification link sent to your email!' : '✅ Account created! Please login.');
+        setMode('login');
       }
     } catch (err) {
-      setError(err.message || 'Signup failed. Please try again.');
+      setError(err.message || 'Signup failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Phone Login (Email OTP Proxy) ────────────────────────────────────────
-  const handlePhoneSubmit = async (e) => {
+  const handleForgotPassword = async (e) => {
     e.preventDefault();
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      setError('Please enter a valid 10-digit phone number');
-      return;
-    }
+    const identifier = tab === 'email' ? email.trim() : phone.trim();
+    if (!identifier) return setError('Please enter your ' + tab);
+
     setLoading(true);
     setError('');
     try {
-      const fullPhone = `+91${cleanPhone.slice(-10)}`;
-      
-      // Look up if this phone exists in public.users
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id, email, name')
-        .eq('phone', fullPhone)
-        .maybeSingle();
-
-      if (existingUser && existingUser.email) {
-        // They have an email! Send OTP
-        const { error: otpErr } = await supabase.auth.signInWithOtp({
-          email: existingUser.email,
+      if (tab === 'email') {
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(identifier, {
+          redirectTo: `${window.location.origin}/reset-password`,
         });
-        if (otpErr) throw new Error(otpErr.message);
-        
-        setLinkedEmail(existingUser.email);
-        setSuccessMsg(`OTP sent to ${existingUser.email}`);
-        setPhoneStep('otp');
-      } else if (existingUser && !existingUser.email) {
-         // Legacy user with NO email. They MUST upgrade now.
-         setPhoneStep('register');
-         setError('Your account needs a security upgrade. Please set an email and password.');
+        if (resetErr) throw resetErr;
+        setSuccess('✅ Password reset link sent to your email!');
+        setMode('login');
       } else {
-        // Brand new user
-        setPhoneStep('register');
+        // For Phone, use OTP as a bridge
+        const { error: otpErr } = await supabase.auth.signInWithOtp({
+          phone: `+91${phone.replace(/\D/g, '').slice(-10)}`,
+        });
+        if (otpErr) throw otpErr;
+        setMode('verify');
+        setSuccess('✅ OTP sent to your phone!');
       }
     } catch (err) {
-      setError('Error checking phone: ' + err.message);
+      setError(err.message || 'Error sending recovery info');
     } finally {
       setLoading(false);
     }
@@ -205,27 +184,16 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: linkedEmail,
+      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        phone: `+91${phone.replace(/\D/g, '').slice(-10)}`,
         token: otp,
-        type: 'email',
+        type: 'sms',
       });
-      if (error) throw new Error(error.message);
 
-      if (data.session) {
-        const authUser = data.user;
-        await ensureUserProfile(authUser);
-        const userData = {
-          id: authUser.id,
-          email: authUser.email,
-          name: authUser.user_metadata?.name || '',
-          phone: authUser.user_metadata?.phone || '',
-          business_name: authUser.user_metadata?.business_name || '',
-        };
-        localStorage.setItem('vyapar_user', JSON.stringify(userData));
-        onLogin(userData);
-        navigate('/');
-      }
+      if (verifyErr) throw verifyErr;
+
+      // If verified, we are logged in. Now redirect to reset password.
+      navigate('/reset-password');
     } catch (err) {
       setError(err.message || 'Invalid OTP');
     } finally {
@@ -233,318 +201,179 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  const handlePhoneRegister = async (e) => {
-    e.preventDefault();
-    if (!phoneName.trim() || !phoneEmail.trim() || !phonePassword.trim()) {
-      setError('Name, Email and Password are required for security');
-      return;
-    }
-    if (phonePassword.length < 6) return setError('Password must be 6+ chars');
-    
-    setLoading(true);
-    setError('');
-    try {
-      const cleanPhone = phone.replace(/\D/g, '');
-      const fullPhone = `+91${cleanPhone.slice(-10)}`;
-      
-      const { data, error: authErr } = await supabase.auth.signUp({
-        email: phoneEmail.trim(),
-        password: phonePassword.trim(),
-        options: {
-          data: {
-            name: phoneName.trim(),
-            business_name: phoneName.trim(),
-            phone: fullPhone,
-          },
-        },
-      });
-      if (authErr) throw new Error(authErr.message);
+  // ── Render Parts ─────────────────────────────────────────────────────────
 
-      if (data.session) {
-        const authUser = data.user;
-        await ensureUserProfile(authUser);
-        const userData = {
-          id: authUser.id,
-          email: authUser.email,
-          name: authUser.user_metadata?.name,
-          phone: authUser.user_metadata?.phone,
-          business_name: authUser.user_metadata?.business_name,
-        };
-        localStorage.setItem('vyapar_user', JSON.stringify(userData));
-        onLogin(userData);
-        navigate('/');
-      } else {
-        setSuccessMsg('Account secured! Check your email to verify.');
-        setTab('email');
-        setEmailMode('login');
-      }
-    } catch (err) {
-      setError(err.message || 'Registration failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const renderHeader = () => (
+    <div className="flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-6">
+      <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30 mb-3 shadow-lg">
+        <Leaf size={32} className="text-white" strokeWidth={2.5} />
+      </div>
+      <h1 className="text-3xl font-black text-white tracking-tight">VyaparBook</h1>
+      <p className="text-green-100 text-sm font-medium opacity-90">Aapka Digital Khata 📒</p>
+    </div>
+  );
 
+  const renderTabs = () => (
+    <div className="flex bg-gray-100 rounded-2xl p-1 mb-6">
+      {[['email', '✉️ Email'], ['phone', '📱 Phone']].map(([val, label]) => (
+        <button
+          key={val}
+          type="button"
+          onClick={() => { setTab(val); setError(''); setSuccess(''); }}
+          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            tab === val ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-600 via-green-500 to-emerald-400 flex flex-col">
-      {/* Hero */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pt-16 pb-8">
-        <div className="w-20 h-20 bg-white/20 rounded-3xl flex items-center justify-center backdrop-blur-sm border border-white/30 mb-4 shadow-xl">
-          <Leaf size={38} className="text-white" strokeWidth={2.5} />
-        </div>
-        <h1 className="text-4xl font-black text-white tracking-tight">VyaparBook</h1>
-        <p className="text-green-100 text-base mt-1 font-medium">Aapka Digital Khata 📒</p>
-        <div className="mt-2 flex gap-2 text-green-100 text-sm">
-          <span>🌾 Rice</span><span>•</span>
-          <span>🌿 Paddy</span><span>•</span>
-          <span>🌾 Wheat</span>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-green-600 to-emerald-500 flex flex-col">
+      {renderHeader()}
 
-      {/* Card */}
-      <div className="bg-white rounded-t-3xl shadow-2xl px-6 pt-8 pb-10 min-h-[420px]">
-
-        {/* Tab Switcher */}
-        {phoneStep === 'enter' && (
-          <div className="flex bg-gray-100 rounded-2xl p-1 mb-6">
-            {[['email', '✉️ Email'], ['phone', '📱 Phone']].map(([val, label]) => (
-              <button
-                key={val}
-                type="button"
-                onClick={() => { setTab(val); setError(''); setSuccessMsg(''); }}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                  tab === val ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+      <div className="bg-white rounded-t-3xl shadow-2xl px-6 pt-8 pb-10 flex-1">
+        
+        {/* State Messages */}
+        {success && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-6 flex items-center gap-3">
+            <CheckCircle className="text-green-500 shrink-0" size={18} />
+            <p className="text-green-700 text-xs font-bold uppercase">{success}</p>
+          </div>
+        )}
+        {error && (
+          <div className="bg-red-50 border border-red-100 rounded-2xl px-4 py-3 mb-6">
+            <p className="text-red-500 text-xs font-bold uppercase">⚠️ {error}</p>
           </div>
         )}
 
-        {/* ── SUCCESS MESSAGE ── */}
-        {successMsg && (
-          <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-4">
-            <p className="text-green-700 text-sm font-semibold">{successMsg}</p>
-          </div>
+        {/* ── FORGOT MODE ── */}
+        {mode === 'forgot' && (
+          <form onSubmit={handleForgotPassword} className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <button onClick={() => setMode('login')} className="flex items-center gap-1 text-xs font-bold text-green-600 mb-6 uppercase tracking-wider">
+              <ChevronLeft size={14} /> Back to Login
+            </button>
+            <h2 className="text-2xl font-black text-gray-900 mb-1">Forgot Password? 🔑</h2>
+            <p className="text-gray-500 text-sm mb-6">Enter your {tab} to receive recovery instructions.</p>
+            
+            <div className="mb-6">
+              <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">{tab}</label>
+              {tab === 'email' ? (
+                <InputRow icon={Mail}>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base outline-none" />
+                </InputRow>
+              ) : (
+                <InputRow icon={Phone}>
+                  <span className="pl-4 text-gray-400 font-bold text-sm">+91</span>
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9876543210" maxLength={10} className="flex-1 px-4 py-3.5 text-base outline-none" />
+                </InputRow>
+              )}
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 flex items-center justify-center gap-2">
+              {loading ? <Loader2 className="animate-spin" /> : 'Send Recovery Code'}
+            </button>
+          </form>
         )}
 
-        {/* ── EMAIL FORMS ── */}
-        {tab === 'email' && (
+        {/* ── VERIFY OTP MODE ── */}
+        {mode === 'verify' && (
+          <form onSubmit={handleVerifyOtp} className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <h2 className="text-2xl font-black text-gray-900 mb-1">Verify Phone 📱</h2>
+            <p className="text-gray-500 text-sm mb-6">Enter the 6-digit code sent to +91{phone}</p>
+            
+            <div className="mb-6">
+              <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">OTP Code</label>
+              <InputRow icon={Lock}>
+                <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} placeholder="123456" maxLength={6} className="flex-1 px-4 py-3.5 text-base font-black tracking-[1em] outline-none" />
+              </InputRow>
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 flex items-center justify-center gap-2">
+              {loading ? <Loader2 className="animate-spin" /> : 'Verify & Continue'}
+            </button>
+          </form>
+        )}
+
+        {/* ── LOGIN / SIGNUP MODES ── */}
+        {(mode === 'login' || mode === 'signup') && (
           <>
-            {emailMode === 'login' ? (
-              <form onSubmit={handleEmailLogin}>
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome Back! 👋</h2>
-                <p className="text-gray-500 text-sm mb-5">Sign in to your VyaparBook account</p>
+            {renderTabs()}
 
-                <div className="space-y-3 mb-4">
+            <form onSubmit={mode === 'login' ? handleLogin : handleSignUp} className="space-y-4">
+              <h2 className="text-2xl font-black text-gray-900 mb-1">
+                {mode === 'login' ? 'Welcome Back! 👋' : 'Create Account ✨'}
+              </h2>
+              <p className="text-gray-500 text-sm mb-6">
+                {mode === 'login' ? 'Sign in to access your digital khata' : 'Start your digital grain business today'}
+              </p>
+
+              {/* Extra Signup Fields */}
+              {mode === 'signup' && (
+                <>
                   <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Email</label>
-                    <InputRow icon={Mail}>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                        placeholder="you@email.com"
-                        className="flex-1 px-4 py-3.5 text-base font-medium outline-none"
-                        autoFocus
-                      />
-                    </InputRow>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Password</label>
-                    <InputRow icon={Lock}>
-                      <input
-                        type={showPass ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                        placeholder="••••••••"
-                        className="flex-1 px-4 py-3.5 text-base font-medium outline-none"
-                      />
-                      <button type="button" onClick={() => setShowPass(!showPass)} className="pr-4">
-                        {showPass ? <EyeOff size={16} className="text-gray-400" /> : <Eye size={16} className="text-gray-400" />}
-                      </button>
-                    </InputRow>
-                  </div>
-                </div>
-
-                {error && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-xl px-3 py-2">⚠️ {error}</p>}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-2xl text-base flex items-center justify-center gap-2 shadow-lg shadow-green-200 hover:from-green-400 hover:to-green-500 transition-all disabled:opacity-60"
-                >
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>Login</span><ArrowRight size={20} /></>}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => { setEmailMode('signup'); setError(''); setSuccessMsg(''); }}
-                  className="w-full mt-3 text-sm text-gray-500 text-center py-2"
-                >
-                  New user? <span className="text-green-600 font-semibold">Create account →</span>
-                </button>
-              </form>
-
-            ) : (
-              <form onSubmit={handleEmailSignup}>
-                <button
-                  type="button"
-                  onClick={() => { setEmailMode('login'); setError(''); }}
-                  className="flex items-center gap-1 text-sm text-green-600 font-medium mb-4"
-                >
-                  <ChevronLeft size={16} /> Back to Login
-                </button>
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">Create Account ✨</h2>
-                <p className="text-gray-500 text-sm mb-5">Join VyaparBook — it&apos;s free!</p>
-
-                <div className="space-y-3 mb-4">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Your Name *</label>
+                    <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">Full Name</label>
                     <InputRow icon={User}>
-                      <input type="text" value={name} onChange={(e) => { setName(e.target.value); setError(''); }}
-                        placeholder="Ravi Kumar" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" autoFocus />
+                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ravi Kumar" className="flex-1 px-4 py-3.5 text-base outline-none" />
                     </InputRow>
                   </div>
                   <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Business Name</label>
+                    <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">Business Name</label>
                     <InputRow icon={Building2}>
-                      <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)}
-                        placeholder="Ravi Rice Mills" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
+                      <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Ravi Rice Mills" className="flex-1 px-4 py-3.5 text-base outline-none" />
                     </InputRow>
                   </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Email *</label>
-                    <InputRow icon={Mail}>
-                      <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                        placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
-                    </InputRow>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Phone (for WhatsApp bot)</label>
-                    <InputRow icon={Phone}>
-                      <span className="pl-2 text-gray-500 font-semibold text-sm pr-1">+91</span>
-                      <input type="tel" value={signupPhone} onChange={(e) => setSignupPhone(e.target.value)}
-                        placeholder="9876543210" maxLength={10} className="flex-1 px-2 py-3.5 text-base font-medium outline-none" />
-                    </InputRow>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Password * (min 6 chars)</label>
-                    <InputRow icon={Lock}>
-                      <input type={showPass ? 'text' : 'password'} value={password}
-                        onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                        placeholder="••••••••" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
-                      <button type="button" onClick={() => setShowPass(!showPass)} className="pr-4">
-                        {showPass ? <EyeOff size={16} className="text-gray-400" /> : <Eye size={16} className="text-gray-400" />}
-                      </button>
-                    </InputRow>
-                  </div>
-                </div>
+                </>
+              )}
 
-                {error && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-xl px-3 py-2">⚠️ {error}</p>}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-2xl text-base flex items-center justify-center gap-2 shadow-lg shadow-green-200 disabled:opacity-60"
-                >
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>Create Account</span><ArrowRight size={20} /></>}
-                </button>
-              </form>
-            )}
-          </>
-        )}
-
-        {/* ── PHONE FORMS ── */}
-        {tab === 'phone' && (
-          <>
-            {phoneStep === 'enter' ? (
-              <form onSubmit={handlePhoneSubmit}>
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome! 👋</h2>
-                <p className="text-gray-500 text-sm mb-5">Enter your phone number to continue</p>
-                <div className="mb-4">
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Phone Number</label>
+              {/* Identifier Field */}
+              <div>
+                <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">{tab}</label>
+                {tab === 'email' ? (
+                  <InputRow icon={Mail}>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base outline-none" />
+                  </InputRow>
+                ) : (
                   <InputRow icon={Phone}>
-                    <span className="pl-2 text-gray-600 font-semibold text-sm pr-1 border-r border-gray-200 mr-1">+91</span>
-                    <input type="tel" value={phone} onChange={(e) => { setPhone(e.target.value); setError(''); }}
-                      placeholder="9876543210" maxLength={10}
-                      className="flex-1 px-4 py-3.5 text-base font-medium outline-none" autoFocus />
+                    <span className="pl-4 text-gray-400 font-bold text-sm">+91</span>
+                    <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9876543210" maxLength={10} className="flex-1 px-4 py-3.5 text-base outline-none" />
                   </InputRow>
+                )}
+              </div>
+
+              {/* Password Field */}
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-widest">Password</label>
+                  {mode === 'login' && (
+                    <button type="button" onClick={() => setMode('forgot')} className="text-xs font-bold text-green-600 uppercase">Forgot?</button>
+                  )}
                 </div>
-                {error && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-xl px-3 py-2">⚠️ {error}</p>}
-                <button type="submit" disabled={loading}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-2xl text-base flex items-center justify-center gap-2 shadow-lg shadow-green-200 disabled:opacity-60">
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>Continue</span><ArrowRight size={20} /></>}
+                <InputRow icon={Lock}>
+                  <input type={showPass ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="flex-1 px-4 py-3.5 text-base outline-none" />
+                  <button type="button" onClick={() => setShowPass(!showPass)} className="pr-4">
+                    {showPass ? <EyeOff size={16} className="text-gray-400" /> : <Eye size={16} className="text-gray-400" />}
+                  </button>
+                </InputRow>
+              </div>
+
+              <button type="submit" disabled={loading} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 flex items-center justify-center gap-2 mt-4">
+                {loading ? <Loader2 className="animate-spin" /> : <>{mode === 'login' ? 'Login' : 'Create Account'} <ArrowRight size={18} /></>}
+              </button>
+
+              <div className="text-center pt-4">
+                <button
+                  type="button"
+                  onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setSuccess(''); }}
+                  className="text-sm font-bold text-gray-500 uppercase tracking-wider"
+                >
+                  {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                  <span className="text-green-600 font-black">{mode === 'login' ? 'Register' : 'Login'}</span>
                 </button>
-                <p className="text-center text-gray-400 text-xs mt-4">
-                  For security, we recommend <button type="button" onClick={() => setTab('email')} className="text-green-600 font-semibold">Email Login</button>
-                </p>
-              </form>
-            ) : phoneStep === 'otp' ? (
-              <form onSubmit={handleVerifyOtp}>
-                <button type="button" onClick={() => { setPhoneStep('enter'); setError(''); }}
-                  className="flex items-center gap-1 text-sm text-green-600 font-medium mb-4">
-                  <ChevronLeft size={16} /> Back
-                </button>
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">Verify OTP 🔢</h2>
-                <p className="text-gray-500 text-sm mb-5">Enter the 6-digit code sent to {linkedEmail}</p>
-                <div className="mb-4">
-                  <label className="text-sm font-semibold text-gray-700 mb-1.5 block">6-Digit Code</label>
-                  <InputRow icon={Lock}>
-                    <input type="text" value={otp} onChange={(e) => { setOtp(e.target.value); setError(''); }}
-                      placeholder="123456" maxLength={6}
-                      className="flex-1 px-4 py-3.5 text-base font-medium outline-none tracking-widest" autoFocus />
-                  </InputRow>
-                </div>
-                {error && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-xl px-3 py-2">⚠️ {error}</p>}
-                <button type="submit" disabled={loading}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-2xl text-base flex items-center justify-center gap-2 shadow-lg shadow-green-200 disabled:opacity-60">
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>Verify Secure Login</span><ArrowRight size={20} /></>}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handlePhoneRegister}>
-                <button type="button" onClick={() => { setPhoneStep('enter'); setError(''); }}
-                  className="flex items-center gap-1 text-sm text-green-600 font-medium mb-4">
-                  <ChevronLeft size={16} /> Back
-                </button>
-                <h2 className="text-2xl font-bold text-gray-900 mb-1">Secure Account ✨</h2>
-                <p className="text-gray-500 text-sm mb-5">To keep your data safe, we need an email</p>
-                <div className="space-y-3 mb-4">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Your Name *</label>
-                    <InputRow icon={User}>
-                      <input type="text" value={phoneName} onChange={(e) => { setPhoneName(e.target.value); setError(''); }}
-                        placeholder="Ravi Kumar" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" autoFocus />
-                    </InputRow>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Email Address *</label>
-                    <InputRow icon={Mail}>
-                      <input type="email" value={phoneEmail} onChange={(e) => { setPhoneEmail(e.target.value); setError(''); }}
-                        placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
-                    </InputRow>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Secure Password *</label>
-                    <InputRow icon={Lock}>
-                      <input type={showPass ? 'text' : 'password'} value={phonePassword} onChange={(e) => { setPhonePassword(e.target.value); setError(''); }}
-                        placeholder="••••••••" className="flex-1 px-4 py-3.5 text-base font-medium outline-none" />
-                      <button type="button" onClick={() => setShowPass(!showPass)} className="pr-4">
-                        {showPass ? <EyeOff size={16} className="text-gray-400" /> : <Eye size={16} className="text-gray-400" />}
-                      </button>
-                    </InputRow>
-                  </div>
-                </div>
-                {error && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-xl px-3 py-2">⚠️ {error}</p>}
-                <button type="submit" disabled={loading}
-                  className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 rounded-2xl text-base flex items-center justify-center gap-2 shadow-lg shadow-green-200 disabled:opacity-60">
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>Start Using VyaparBook</span><ArrowRight size={20} /></>}
-                </button>
-              </form>
-            )}
+              </div>
+            </form>
           </>
         )}
       </div>

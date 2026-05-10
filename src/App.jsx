@@ -21,6 +21,7 @@ import Expenses from './pages/Expenses';
 import Loans from './pages/Loans';
 import DayBook from './pages/DayBook';
 import Settings from './pages/Settings';
+import ResetPassword from './pages/ResetPassword';
 
 // Components
 import BottomNav from './components/common/BottomNav';
@@ -170,6 +171,11 @@ const App = () => {
                 <Login onLogin={handleLogin} />
               )
             }
+          />
+
+          <Route
+            path="/reset-password"
+            element={<ResetPassword />}
           />
 
           {/* Protected Routes */}
