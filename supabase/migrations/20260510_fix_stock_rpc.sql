@@ -63,51 +63,8 @@ BEGIN
     );
   END IF;
 
-  -- 5. Upsert Stock (if commodity and qty provided)
-  IF p_commodity IS NOT NULL AND p_quantity > 0 THEN
-    -- Find existing stock
-    SELECT id, current_stock, total_purchased, total_sold 
-    INTO v_stock_id, v_current_stock, v_total_purchased, v_total_sold
-    FROM stock
-    WHERE user_id = v_user_id AND lower(commodity) = lower(p_commodity)
-    FOR UPDATE;
-
-    v_delta := CASE WHEN p_type = 'purchase' THEN p_quantity ELSE -p_quantity END;
-
-    IF v_stock_id IS NOT NULL THEN
-      -- Validation: Prevent sale if insufficient stock
-      IF p_type = 'sale' AND v_current_stock < p_quantity THEN
-        RAISE EXCEPTION 'Insufficient stock for %. You only have % % left.', p_commodity, v_current_stock, p_unit;
-      END IF;
-
-      -- Update existing
-      UPDATE stock
-      SET current_stock = GREATEST(0, v_current_stock + v_delta),
-          total_purchased = COALESCE(total_purchased, 0) + (CASE WHEN p_type = 'purchase' THEN p_quantity ELSE 0 END),
-          total_sold = COALESCE(total_sold, 0) + (CASE WHEN p_type = 'sale' THEN p_quantity ELSE 0 END),
-          updated_at = now()
-      WHERE id = v_stock_id;
-    ELSE
-      -- If selling something we don't even have a record for
-      IF p_type = 'sale' THEN
-        RAISE EXCEPTION 'Insufficient stock. You have 0 % of % in stock.', p_unit, p_commodity;
-      END IF;
-
-      -- Insert new
-      INSERT INTO stock (
-        user_id, commodity, unit, current_stock, 
-        total_purchased, total_sold
-      )
-      VALUES (
-        v_user_id, 
-        lower(p_commodity), 
-        p_unit, 
-        GREATEST(0, v_delta),
-        (CASE WHEN p_type = 'purchase' THEN p_quantity ELSE 0 END),
-        (CASE WHEN p_type = 'sale' THEN p_quantity ELSE 0 END)
-      );
-    END IF;
-  END IF;
+  -- 5. Stock is now handled automatically by the 'trg_stock_consistency' trigger!
+  -- No manual code needed here anymore. Perfect consistency guaranteed.
 
   -- 6. Return success
   RETURN json_build_object(
