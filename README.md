@@ -16,28 +16,31 @@ VyaparBook is a high-performance **Progressive Web App (PWA)** integrated with a
 
 ---
 
-## ✨ Key Features (v2.0 Elite)
+## ✨ Key Features (v2.5 Production Elite)
 
 ### 🤖 Smart WhatsApp AI Agent
 - **Autonomous Multi-Step Flows**: The bot confirms deals, asks for missing info, and proactively suggests adding notes or photo receipts.
-- **Smart Payment Allocation**: If a party has multiple pending deals, the bot asks you exactly which one to "cut" the payment from, ensuring your ledger is perfectly organized.
+- **Smart Payment Allocation**: If a party has multiple pending deals, the bot asks you exactly which one to "cut" the payment from.
 - **Tenglish Voice Support**: Send voice notes in Telugu/English; the bot transcribes and parses them instantly.
+
+### 🔐 Premium Multi-Channel Auth
+- **Dual Login Methods**: Log in securely using **Email + Password** or **Phone Number + Password**.
+- **Self-Service Recovery**: Built-in "Forgot Password" flow with secure email reset links and phone OTP verification.
+- **Mandatory Verification**: Enforced account verification to ensure data privacy and security.
 
 ### 📔 Digital Day Book (Roznamcha)
 - **Chronological Business Log**: A minute-by-minute view of every Sale, Purchase, Payment, and Expense.
 - **Daily Cash Flow Summary**: Instantly see your total "Cash In" vs. "Outflow" for any selected date.
 
-### 🕙 Automated Nightly 10 PM Reports
-- **Proactive Summary**: Every night at 10:00 PM IST, you get a WhatsApp message summarizing today's work.
-- **Global Balances**: See exactly how much you need to **Collect (Receive)** and how much you need to **Pay** across your entire business.
-
-### 🧾 Professional Party Statements
-- **One-Click Share**: Generate detailed transaction summaries formatted for WhatsApp in one tap.
-- **Ledger Clarity**: Breakdown of Total Business, Total Paid, and Outstanding balances for every farmer/miller.
+### 🛡️ 100% Data Integrity
+- **Automated Stock Triggers**: Built-in database triggers ensure stock is recalculated instantly on every add/edit/delete.
+- **Atomic Transactions**: Deals, payments, and stock updates happen in a single millisecond or not at all—no more "messy" data.
+- **Insufficient Stock Guard**: The system prevents you from selling more grain than you physically have in stock.
 
 ### 📊 Advanced Business Intelligence
+- **Commodity Profitability**: A new "Crop Breakdown" view showing exactly how much profit you made on Rice vs. Paddy vs. Wheat.
 - **Profit Trends**: 6-month visual area charts showing your Net Profit growth.
-- **Stock Management**: Real-time inventory levels that update automatically on every sale or purchase.
+- **Stock Management**: Real-time inventory levels that update automatically with total volume tracking.
 - **Expense Tracking**: Category-wise overhead management (Labor, Rent, Fuel, etc.).
 
 ---
@@ -117,4 +120,4 @@ select cron.schedule(
 ## 👨‍💻 Built with ❤️ for the Trading Community
 VyaparBook is designed to empower local Indian traders with enterprise-grade AI. It respects local business logic, local language, and the need for high-speed operation.
 
-*Version 2.0.0 — Stable Release — May 2026*
+*Version 2.5.0 — Stable Production Release — May 2026*
