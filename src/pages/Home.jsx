@@ -369,7 +369,7 @@ const Home = ({ user, onLogout }) => {
       // Step 8: Show success
       resetVoice();
       setPendingDealData(null);
-      showToast(`✅ Saved! ${partyRecord.name} - ₹${formatAmount(finalData.total_amount)}`);
+      showToast(`✅ Saved! ${partyRecord.name} - ${formatAmount(finalData.total_amount)}`);
       
       // Step 9: Refresh dashboard
       await loadData();

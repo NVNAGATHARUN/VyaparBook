@@ -16,18 +16,19 @@ export default function QueryResult({ data, onClose }) {
       {/* Bottom sheet */}
       <div className="
         relative bg-white rounded-t-3xl w-full
-        max-h-[88vh] overflow-y-auto
+        max-h-[85vh] flex flex-col
         animate-slide-up
+        shadow-2xl
       ">
         {/* Handle bar */}
-        <div className="flex justify-center pt-3 pb-1">
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
           <div className="w-12 h-1 bg-gray-300 rounded-full"/>
         </div>
 
         {/* Header */}
         <div className="
           flex justify-between items-center
-          px-4 py-3 border-b border-gray-100
+          px-4 py-3 border-b border-gray-100 shrink-0
         ">
           <h2 className="text-lg font-bold text-gray-800">
             {getTitle(data)}
@@ -43,7 +44,7 @@ export default function QueryResult({ data, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="p-4 pb-8">
+        <div className="p-4 pb-32 overflow-y-auto overscroll-contain flex-1">
           {data.type === 'ERROR' &&
             <ErrorView data={data} />}
           {data.type === 'PARTY_TRANSACTIONS' &&
@@ -90,7 +91,7 @@ const StatCard = ({ label, amount, color }) => (
   <div className={`rounded-2xl p-3 text-center bg-${color}-50`}>
     <p className="text-xs text-gray-500 mb-1">{label}</p>
     <p className={`font-bold text-${color}-600`}>
-      ₹{formatAmount(amount)}
+      {formatAmount(amount)}
     </p>
   </div>
 )
@@ -120,16 +121,16 @@ const DealCard = ({ deal }) => (
           {deal.quantity} {deal.unit} {deal.commodity}
         </p>
         <p className="text-sm text-gray-500">
-          Rate: ₹{formatAmount(deal.rate)}
+          Rate: {formatAmount(deal.rate)}
         </p>
       </div>
       <div className="text-right">
         <p className="font-bold">
-          ₹{formatAmount(deal.total_amount)}
+          {formatAmount(deal.total_amount)}
         </p>
         {(deal.pending_amount || 0) > 0
           ? <p className="text-sm text-red-500 font-medium">
-              ₹{formatAmount(deal.pending_amount)} pending
+              {formatAmount(deal.pending_amount)} pending
             </p>
           : <p className="text-sm text-green-500">✅ Paid</p>
         }
@@ -176,7 +177,7 @@ const PartyPendingView = ({ data }) => (
         {data.party.name} — Total Pending
       </p>
       <p className="text-4xl font-bold text-red-600">
-        ₹{formatAmount(data.summary?.pending_amount || 0)}
+        {formatAmount(data.summary?.pending_amount || 0)}
       </p>
     </div>
     <div className="grid grid-cols-2 gap-3 mb-4">
@@ -204,7 +205,7 @@ const PartyPendingView = ({ data }) => (
             {formatDate(deal.deal_date)}
           </p>
           <p className="font-bold text-red-600">
-            ₹{formatAmount(deal.pending_amount)}
+            {formatAmount(deal.pending_amount)}
           </p>
         </div>
       </div>
@@ -217,7 +218,7 @@ const PartyPaymentsView = ({ data }) => (
     <div className="bg-green-50 rounded-2xl p-4 text-center mb-4">
       <p className="text-gray-500">Total Paid</p>
       <p className="text-3xl font-bold text-green-600">
-        ₹{formatAmount(data.totalPaid)}
+        {formatAmount(data.totalPaid)}
       </p>
     </div>
     {data.payments.map((p, i) => (
@@ -228,7 +229,7 @@ const PartyPaymentsView = ({ data }) => (
       ">
         <div>
           <p className="font-bold">
-            ₹{formatAmount(p.amount)}
+            {formatAmount(p.amount)}
           </p>
           <p className="text-sm text-gray-400">
             {p.payment_mode}
@@ -247,7 +248,7 @@ const AllPendingView = ({ data }) => (
     <div className="bg-red-50 rounded-2xl p-4 text-center mb-4">
       <p className="text-gray-500">Total Pending</p>
       <p className="text-3xl font-bold text-red-600">
-        ₹{formatAmount(data.totalPending)}
+        {formatAmount(data.totalPending)}
       </p>
     </div>
     {data.parties.map((p, i) => (
@@ -263,7 +264,7 @@ const AllPendingView = ({ data }) => (
           </p>
         </div>
         <p className="font-bold text-red-600">
-          ₹{formatAmount(p.pending_amount)}
+          {formatAmount(p.pending_amount)}
         </p>
       </div>
     ))}
@@ -329,7 +330,7 @@ const TodayView = ({ data }) => (
             {d.parties?.name}
           </p>
           <p className="font-bold">
-            ₹{formatAmount(d.total_amount)}
+            {formatAmount(d.total_amount)}
           </p>
         </div>
         <p className="text-sm text-gray-500">
@@ -354,13 +355,13 @@ const MonthlyView = ({ data }) => {
         </div>
         <div className="bg-blue-50 rounded-2xl p-4 text-center">
           <p className="text-xs text-gray-500 mb-1">💰 Sales</p>
-          <p className="font-bold text-blue-600">₹{formatAmount(data.sales.total)}</p>
+          <p className="font-bold text-blue-600">{formatAmount(data.sales.total)}</p>
         </div>
       </div>
       
       {data.totalExpenses > 0 && (
         <div className="bg-gray-50 rounded-2xl p-3 text-center mb-4 border border-gray-100">
-          <p className="text-xs text-gray-500">🏢 Expenses: <span className="font-bold text-gray-700">₹{formatAmount(data.totalExpenses)}</span></p>
+          <p className="text-xs text-gray-500">🏢 Expenses: <span className="font-bold text-gray-700">{formatAmount(data.totalExpenses)}</span></p>
         </div>
       )}
 
@@ -372,7 +373,7 @@ const MonthlyView = ({ data }) => {
         <p className={`text-2xl font-bold
           ${net >= 0 ? 'text-green-600' : 'text-red-600'}
         `}>
-          ₹{formatAmount(Math.abs(net))}
+          {formatAmount(Math.abs(net))}
         </p>
         <p className="text-sm text-gray-500">
           {net >= 0 ? '✅ Business is profitable' : '📉 Higher investment/expenses'}
@@ -430,7 +431,7 @@ const LastPaymentView = ({ data }) => (
       : <div className="bg-green-50 rounded-2xl p-6 text-center">
           <p className="text-gray-500 mb-2">Last Payment</p>
           <p className="text-4xl font-bold text-green-600 mb-2">
-            ₹{formatAmount(data.payment.amount)}
+            {formatAmount(data.payment.amount)}
           </p>
           <p className="text-gray-600">
             {formatDate(data.payment.payment_date)}
@@ -504,7 +505,7 @@ const PendingToPayView = ({ data }) => (
     <div className="bg-red-50 rounded-2xl p-4 text-center mb-4">
       <p className="text-gray-500">Total to Pay</p>
       <p className="text-3xl font-bold text-red-600">
-        ₹{formatAmount(data.totalPending)}
+        {formatAmount(data.totalPending)}
       </p>
     </div>
     {(data.parties || []).length === 0
@@ -522,7 +523,7 @@ const PendingToPayView = ({ data }) => (
               <p className="text-xs text-gray-400">{p.party_type}</p>
             </div>
             <p className="font-bold text-red-600">
-              ₹{formatAmount(p.pending_amount)}
+              {formatAmount(p.pending_amount)}
             </p>
           </div>
         ))
@@ -535,7 +536,7 @@ const PendingToReceiveView = ({ data }) => (
     <div className="bg-green-50 rounded-2xl p-4 text-center mb-4">
       <p className="text-gray-500">Total to Receive</p>
       <p className="text-3xl font-bold text-green-600">
-        ₹{formatAmount(data.totalPending)}
+        {formatAmount(data.totalPending)}
       </p>
     </div>
     {(data.deals || []).length === 0
@@ -553,7 +554,7 @@ const PendingToReceiveView = ({ data }) => (
               <p className="text-xs text-gray-400">{formatDate(d.deal_date)}</p>
             </div>
             <p className="font-bold text-green-600">
-              ₹{formatAmount(d.pending_amount)}
+              {formatAmount(d.pending_amount)}
             </p>
           </div>
         ))
@@ -570,13 +571,13 @@ const AllTransactionsView = ({ data }) => (
       </div>
       <div className="bg-green-50 rounded-xl p-3 text-center">
         <p className="text-xs text-gray-500">Business</p>
-        <p className="font-bold text-green-600">₹{formatAmount(data.totalBusiness)}</p>
+        <p className="font-bold text-green-600">{formatAmount(data.totalBusiness)}</p>
       </div>
     </div>
     {data.totalPending > 0 && (
       <div className="bg-red-50 rounded-xl p-3 text-center mb-4">
         <p className="text-xs text-gray-500">Total Pending</p>
-        <p className="font-bold text-red-600">₹{formatAmount(data.totalPending)}</p>
+        <p className="font-bold text-red-600">{formatAmount(data.totalPending)}</p>
       </div>
     )}
     <h3 className="font-bold text-gray-700 mb-3">
@@ -596,9 +597,9 @@ const AllTransactionsView = ({ data }) => (
             </p>
           </div>
           <div className="text-right">
-            <p className="font-bold">₹{formatAmount(d.total_amount)}</p>
+            <p className="font-bold">{formatAmount(d.total_amount)}</p>
             {(d.pending_amount || 0) > 0
-              ? <p className="text-xs text-red-500">₹{formatAmount(d.pending_amount)} due</p>
+              ? <p className="text-xs text-red-500">{formatAmount(d.pending_amount)} due</p>
               : <p className="text-xs text-green-500">✅ Paid</p>
             }
           </div>

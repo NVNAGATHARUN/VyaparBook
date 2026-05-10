@@ -5,31 +5,32 @@ const genAI = new GoogleGenerativeAI(
 )
 
 const INTENT_PROMPT = `
-You are VyaparBook AI — a sophisticated accounting agent for Indian traders.
+You are VyaparBook AI — a sophisticated accounting agent for Indian grain traders.
 Your goal is to analyze the user's message, understand their business need, and provide a structured response.
 
 Current Date: ${new Date().toLocaleDateString('en-IN')}
-User context: {business_type: "Grains/Rice/Paddy"}
+User context: {business_type: "Grains/Rice/Paddy/Wheat"}
 
 ## Capabilities:
 1. RECORDING: Add deals (purchase/sale) or payments.
-2. REPORTING: Show pending, transactions, stock, today's summary, monthly reports.
-3. ANALYSIS: Answer complex questions about business health, top parties, or trends.
-4. GREETING: Friendly conversation.
+2. REPORTING: Show pending balances, transaction history, stock levels, today's summary, monthly reports.
+3. ANALYSIS: Answer business health questions, top parties, or trends.
+4. GREETING: Friendly conversation in Tenglish/English.
+
+## Critical Business Logic:
+- "milna hai", "raavali", "pending to receive", "balance due to me" → QUERY_TO_RECEIVE
+- "dena hai", "ivvaali", "pay cheyali", "balance I owe" → QUERY_TO_PAY
+- "total pending", "baki kitna hai", "baki enta" → QUERY_ALL_PENDING
+- "how is business", "summary", "report" → QUERY_TODAY or QUERY_MONTHLY depending on context.
 
 ## Critical Rules:
-- If the user is asking "What is...", "How much...", "Show...", "List...", "Who...", it's a QUERY.
-- If the user is stating a fact like "Ravi se 5 lorry konna", it's an ACTION (ADD_DEAL).
-- If the user is stating a payment like "Ravi ki 2 lakh diya", it's an ACTION (ADD_PAYMENT).
-- Be extremely careful with "Telugu" and "Tenglish".
-  - "enta raavali" = how much to receive (QUERY_TO_RECEIVE)
-  - "enta pay cheyali" = how much to pay (QUERY_TO_PAY)
-  - "chupinchu" = show (QUERY)
-  - "ivvaalu" = today (QUERY_TODAY)
+- If the user is asking a question (Who, What, How, Show), it is a QUERY.
+- If the user is reporting a new event (I bought, I sold, I paid), it is an ACTION.
+- If the user just says a name like "Ravi", ask for clarification (CLARIFY).
 
 ## Output Format (JSON):
 {
-  "reasoning": "Briefly explain your understanding of the user's need",
+  "reasoning": "Briefly explain your understanding",
   "intent": "INTENT_TYPE",
   "confidence": 0.0 to 1.0,
   "entities": {
@@ -46,32 +47,20 @@ User context: {business_type: "Grains/Rice/Paddy"}
 }
 
 ## Intent Types:
-- QUERY_PARTY_TRANSACTIONS
-- QUERY_PARTY_PENDING
-- QUERY_ALL_PENDING
-- QUERY_TO_PAY
-- QUERY_TO_RECEIVE
-- QUERY_TOP_PENDING
-- QUERY_TODAY
-- QUERY_MONTHLY
-- QUERY_STOCK
-- QUERY_LAST_PAYMENT
-- QUERY_ALL_TRANSACTIONS
-- QUERY_FEATURES
-- QUERY_GENERAL_ANALYSIS (For complex questions like "How was my business last week?")
-- ADD_DEAL
-- ADD_PAYMENT
-- GREETING
-- THANK_YOU
+- QUERY_PARTY_TRANSACTIONS, QUERY_PARTY_PENDING, QUERY_ALL_PENDING
+- QUERY_TO_PAY, QUERY_TO_RECEIVE, QUERY_TOP_PENDING
+- QUERY_TODAY, QUERY_MONTHLY, QUERY_STOCK, QUERY_LAST_PAYMENT
+- QUERY_ALL_TRANSACTIONS, QUERY_FEATURES, QUERY_GENERAL_ANALYSIS
+- ADD_DEAL, ADD_PAYMENT, GREETING, THANK_YOU, CLARIFY
 
 Now, analyze this message and respond in JSON:
 `;
 
 const inferIntentFromText = (message) => {
   const text = (message || '').toLowerCase().trim()
-  const startsLikeQuery = /^(show|give me|tell me|what|how much|list|all|which|who)/.test(text)
+  const startsLikeQuery = /^(show|give me|tell me|what|how much|list|all|which|who|enta|chupinchu)/.test(text)
 
-  if (/^(hi|hello|hey|good morning|good evening|good afternoon|namaste|hii|helo)\b/.test(text)) {
+  if (/^(hi|hello|hey|good morning|good evening|good afternoon|namaste|hii|helo|namaskaram)\b/.test(text)) {
     return 'GREETING'
   }
   if (/thank you|thanks|dhanyawaad|shukriya/.test(text)) {
@@ -80,26 +69,26 @@ const inferIntentFromText = (message) => {
   if (/feature|help|what can you do|how to use|vyaparbook/.test(text)) {
     return 'QUERY_FEATURES'
   }
-  if (/stock|inventory|godown/.test(text)) {
+  if (/stock|inventory|godown|nilva/.test(text)) {
     return 'QUERY_STOCK'
   }
-  if (/today|aaj|ivvaalu/.test(text)) {
+  if (/today|aaj|ivvaalu|eroju/.test(text)) {
     return 'QUERY_TODAY'
   }
   if (/month|monthly|nela/.test(text)) {
     return 'QUERY_MONTHLY'
   }
-  if (/who owes me|receive|raavali/.test(text)) {
+  if (/who owes me|receive|raavali|milna hai/.test(text)) {
     return 'QUERY_TO_RECEIVE'
   }
-  if (/whom.*pay|who should i pay|to pay|pay cheyali|send money/.test(text)) {
+  if (/whom.*pay|who should i pay|to pay|pay cheyali|ivvaali|dena hai/.test(text)) {
     return 'QUERY_TO_PAY'
   }
-  if (/all transaction|all deals|complete history|show me deals|transactions list/.test(text)) {
+  if (/all transaction|all deals|history|transactions list|deals list/.test(text)) {
     return 'QUERY_ALL_TRANSACTIONS'
   }
-  if (/pending/.test(text) && startsLikeQuery) {
-    return 'QUERY_PARTY_PENDING'
+  if (/pending|baki|due/.test(text)) {
+    return 'QUERY_ALL_PENDING'
   }
   return 'UNKNOWN'
 }
