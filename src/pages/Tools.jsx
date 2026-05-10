@@ -9,7 +9,7 @@ import {
 import InterestCalculator from '../components/tools/InterestCalculator';
 import { supabase } from '../services/supabase';
 
-const Tools = ({ user }) => {
+const Tools = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [showCalc, setShowCalc] = useState(false);
 
@@ -125,8 +125,7 @@ const Tools = ({ user }) => {
             <button
               onClick={() => {
                 if (window.confirm('Are you sure you want to logout?')) {
-                  localStorage.removeItem('vyapar_user');
-                  window.location.href = '/login';
+                  onLogout();
                 }
               }}
               className="w-full bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4 group active:scale-95 transition-all"
