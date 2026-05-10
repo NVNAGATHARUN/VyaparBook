@@ -75,6 +75,11 @@ const App = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
+        if (event === 'PASSWORD_RECOVERY') {
+          console.log('🔐 Password recovery session detected');
+          return; // Stay on the current page (ResetPassword)
+        }
+
         if (session?.user) {
           const authUser = session.user;
           const userData = {
