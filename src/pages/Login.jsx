@@ -18,7 +18,7 @@ const ensureUserProfile = async (authUser) => {
     await supabase.from('users').insert([{
       id: authUser.id,
       name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Trader',
-      email: authUser.email?.includes('@vyapar.internal') ? null : authUser.email,
+      email: authUser.email?.includes('@vyaparbook.com') ? null : authUser.email,
       phone: authUser.user_metadata?.phone || null,
       business_name: authUser.user_metadata?.business_name || null,
     }]);
@@ -27,7 +27,7 @@ const ensureUserProfile = async (authUser) => {
 
 const getPhoneEmail = (phone) => {
   const clean = phone.replace(/\D/g, '').slice(-10);
-  return `p+91${clean}@vyapar.internal`;
+  return `user${clean}@vyaparbook.com`;
 };
 
 const InputRow = ({ icon: Icon, children }) => (
