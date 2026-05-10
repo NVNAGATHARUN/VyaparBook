@@ -75,6 +75,11 @@ BEGIN
     v_delta := CASE WHEN p_type = 'purchase' THEN p_quantity ELSE -p_quantity END;
 
     IF v_stock_id IS NOT NULL THEN
+      -- Validation: Prevent sale if insufficient stock
+      IF p_type = 'sale' AND v_current_stock < p_quantity THEN
+        RAISE EXCEPTION 'Insufficient stock for %. You only have % % left.', p_commodity, v_current_stock, p_unit;
+      END IF;
+
       -- Update existing
       UPDATE stock
       SET current_stock = GREATEST(0, v_current_stock + v_delta),
@@ -83,6 +88,11 @@ BEGIN
           updated_at = now()
       WHERE id = v_stock_id;
     ELSE
+      -- If selling something we don't even have a record for
+      IF p_type = 'sale' THEN
+        RAISE EXCEPTION 'Insufficient stock. You have 0 % of % in stock.', p_unit, p_commodity;
+      END IF;
+
       -- Insert new
       INSERT INTO stock (
         user_id, commodity, unit, current_stock, 
