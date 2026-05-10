@@ -1,77 +1,44 @@
-# 🌾 VyaparBook — Aapka Digital Khata
+# 🌾 VyaparBook — Aapka Digital Khata & AI Agent
 
-> **Voice-first PWA accounting app for Indian grain traders**  
-> Speak in Telugu/English → AI parses it → Saves to your digital Khata automatically!
+> **Enterprise-grade PWA & WhatsApp AI Bot for Indian grain traders.**  
+> Speak in Telugu/Tenglish → AI handles the accounting, payments, and reporting automatically!
 
 ---
 
 ## 📱 What is VyaparBook?
 
-VyaparBook is a **Progressive Web App (PWA)** built specifically for Indian grain traders (rice, paddy, wheat). Instead of maintaining physical ledgers (Khata), traders can simply **speak** their transactions in Telugu or Tenglish (Telugu + English), and the AI automatically records the deal in the database.
+VyaparBook is a high-performance **Progressive Web App (PWA)** integrated with a **WhatsApp AI Agent**, designed specifically for Indian grain traders (Rice, Paddy, Wheat). It replaces traditional physical ledgers (Roznamcha) with a voice-first, AI-driven experience that handles transactions, stock, and debts autonomously.
 
 **Example:**
 > 🗣️ *"Ravi degara 5 lorry paddy 2350 rate ki konna"*  
 > ✅ AI saves: Purchase from Ravi — 5 Lorry Paddy @ ₹2350 — Total ₹11,750
+> 🤖 WhatsApp: *"Ravi ki multiple deals unnyi. Edi 'cut' cheyali?"*
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features (v2.0 Elite)
 
-### 🎙️ Voice-First Workflow
-- **One tap to record** — Speak in Telugu, English, or Tenglish
-- **Groq Whisper STT** — Ultra-fast, accurate speech-to-text
-- **Gemini AI parsing** — Extracts party, commodity, quantity, rate, total automatically
-- **Smart fallback** — If primary AI model is busy, automatically tries backup models
+### 🤖 Smart WhatsApp AI Agent
+- **Autonomous Multi-Step Flows**: The bot confirms deals, asks for missing info, and proactively suggests adding notes or photo receipts.
+- **Smart Payment Allocation**: If a party has multiple pending deals, the bot asks you exactly which one to "cut" the payment from, ensuring your ledger is perfectly organized.
+- **Tenglish Voice Support**: Send voice notes in Telugu/English; the bot transcribes and parses them instantly.
 
-### 🧠 Smart Missing Field Detection
-- If you forget to mention the **rate**, the app asks: *"Oka lorry ki enta rate?"*
-- Live auto-calculation shows the total as you type
-- Works for commodity, rate, and total amount fields
+### 📔 Digital Day Book (Roznamcha)
+- **Chronological Business Log**: A minute-by-minute view of every Sale, Purchase, Payment, and Expense.
+- **Daily Cash Flow Summary**: Instantly see your total "Cash In" vs. "Outflow" for any selected date.
 
-### ✏️ Fully Editable Confirmation Card
-- Every field is editable before saving
-- **Live auto-calculations**: Change Qty or Rate → Total updates instantly
-- Change Total → Pending updates instantly
+### 🕙 Automated Nightly 10 PM Reports
+- **Proactive Summary**: Every night at 10:00 PM IST, you get a WhatsApp message summarizing today's work.
+- **Global Balances**: See exactly how much you need to **Collect (Receive)** and how much you need to **Pay** across your entire business.
 
-### 👥 New Party Detection
-- If the AI finds a name not in your contact list, it pauses and asks you to categorize them
-- Choose: Farmer, Miller, Dealer, Broker, or Other
-- Party is saved first, then the deal is recorded seamlessly
+### 🧾 Professional Party Statements
+- **One-Click Share**: Generate detailed transaction summaries formatted for WhatsApp in one tap.
+- **Ledger Clarity**: Breakdown of Total Business, Total Paid, and Outstanding balances for every farmer/miller.
 
-### 🧾 Payment Proofs & Receipts *(New!)*
-- Select **Payment Mode**: Hand Cash 💵 | PhonePe/GPay 📱 | Bank Transfer 🏦 | Cheque 📝
-- Enter **Transaction ID / Cheque Number** (optional)
-- **Upload receipt screenshot** as proof (optional, stored in Supabase Storage)
-- Proofs are linked directly to the payment record in the database
-
-### 📊 Business Dashboard
-- **To Pay** / **To Receive** summary cards
-- Today's total business volume
-- Recent 8 transactions at a glance
-
-### 📋 Full Business Module
-- **Parties** — Manage buyers, sellers, farmers, millers
-- **Deals** — All purchase and sale records
-- **Payments** — Full payment history with proof links
-- **Stock** — Auto-updated inventory (increases on purchase, decreases on sale)
-- **Reports** — Business analytics with **Net Profit** calculation (Sales - Purchase - Expenses)
-
-### 📈 Financial Tools & Interest Calculator *(New!)*
-- **Multi-mode Calculator**: Simple Interest, Compound Interest, and **EMI (Monthly)**.
-- **Loan Tracking**: Save loans (Bank, Gold, Hand loans) and track repayments.
-- **Installment Reminders**: Automated list of upcoming installments with WhatsApp reminder links.
-- **Expense Management**: Track business overheads like Labor, Rent, Fuel, and Electricity with category icons.
-
-### 🤖 Advanced AI Agent (WhatsApp & App) *(New!)*
-- **Polite Chat**: Responds to greetings (Hi/Hello) and gratitude (Thank You/Dhanyawaad) naturally.
-- **Smart Clarification**: Proactively asks for missing details (like "Which party?") instead of failing.
-- **WhatsApp Bot**: Record deals, ask for pending balances, or get stock status via WhatsApp voice notes.
-- **Receipt Prompts**: Gently asks to attach a photo receipt after recording payments.
-
-### 📶 Offline Support
-- Full PWA with service worker — works offline
-- Offline banner alerts when connection is lost
-- Installable on Android/iOS as a home screen app
+### 📊 Advanced Business Intelligence
+- **Profit Trends**: 6-month visual area charts showing your Net Profit growth.
+- **Stock Management**: Real-time inventory levels that update automatically on every sale or purchase.
+- **Expense Tracking**: Category-wise overhead management (Labor, Rent, Fuel, etc.).
 
 ---
 
@@ -79,14 +46,12 @@ VyaparBook is a **Progressive Web App (PWA)** built specifically for Indian grai
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18 + Vite |
-| Styling | Tailwind CSS |
-| Database | Supabase (PostgreSQL) |
-| File Storage | Supabase Storage |
-| Speech-to-Text | Groq Whisper API |
-| AI Parsing | Google Gemini 2.5 Flash |
-| PWA | vite-plugin-pwa |
-| Routing | React Router v6 |
+| **Frontend** | React 18 + Vite (PWA) |
+| **Styling** | Vanilla CSS (Premium Custom Design) |
+| **Database** | Supabase (PostgreSQL) |
+| **Edge Functions** | Deno (for WhatsApp Webhooks & Cron) |
+| **AI Brain** | Groq Llama 3.1 & Whisper V3 (Ultra-Fast) |
+| **Scheduling** | Supabase `pg_cron` & `pg_net` |
 
 ---
 
@@ -100,137 +65,56 @@ npm install
 ```
 
 ### 2. Configure Environment Variables
-Create a `.env` file in the root:
+Create a `.env` file for the frontend:
 ```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_KEY=your_supabase_anon_key
-VITE_GROQ_API_KEY=your_groq_api_key
-VITE_GEMINI_API_KEY=your_gemini_api_key
+VITE_SUPABASE_URL=your_project_url
+VITE_SUPABASE_KEY=your_anon_key
+VITE_GROQ_API_KEY=your_groq_key
 ```
 
-**Get your API keys:**
-- Supabase: [supabase.com](https://supabase.com) → Create project → Settings → API
-- Groq: [console.groq.com](https://console.groq.com) → API Keys → Create
-- Gemini: [aistudio.google.com](https://aistudio.google.com) → Get API Key
-
-### 3. Setup Database
-Run these SQL scripts **in order** in your Supabase SQL Editor:
-
-1. `supabase_setup.sql` — Creates tables, views, and RLS policies
-2. `supabase_fix.sql` — Fixes any view conflicts
-3. `payment_proofs_setup.sql` — Adds payment proof columns and storage bucket *(Required for receipt uploads)*
-
-### 4. Run Locally
+### 3. Deploy Edge Functions
+Use the Supabase CLI to deploy the "Brains" of the bot:
 ```bash
-npm run dev
+npx supabase link --project-ref your_project_id
+npx supabase functions deploy whatsapp-incoming
+npx supabase functions deploy daily-report
 ```
-Open [http://localhost:5173](http://localhost:5173)
 
-### 5. Build for Production
+### 4. Set Production Secrets
 ```bash
-npm run build
+npx supabase secrets set GROQ_API_KEY=...
+npx supabase secrets set WHATSAPP_ACCESS_TOKEN=...
+npx supabase secrets set WHATSAPP_PHONE_NUMBER_ID=...
+```
+
+### 5. Enable Cron (Nightly Report)
+Run this SQL in your Supabase Editor to enable the 10 PM summary:
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+select cron.schedule(
+  'daily-vyapar-summary',
+  '30 16 * * *', -- 10:00 PM IST
+  $$ select net.http_post(
+       url:='https://your-id.supabase.co/functions/v1/daily-report',
+       headers:='{"Authorization": "Bearer YOUR_ROLE_KEY"}'::jsonb
+     ) $$
+);
 ```
 
 ---
 
-## 📂 Project Structure
-
-```
-vyaparbook/
-├── public/
-│   ├── icons/
-│   │   ├── icon-192.png          # PWA Icon
-│   │   └── icon-512.png          # PWA Icon
-│   └── manifest.json             # PWA Manifest
-├── src/
-│   ├── components/
-│   │   ├── common/
-│   │   │   ├── AmountCard.jsx    # ₹ Display card
-│   │   │   ├── BottomNav.jsx     # Navigation bar
-│   │   │   └── LoadingSpinner.jsx
-│   │   └── voice/
-│   │       ├── VoiceButton.jsx       # Mic record button
-│   │       ├── VoiceRecorder.jsx     # Voice flow orchestrator
-│   │       ├── FollowUpCard.jsx      # Smart missing field prompts
-│   │       ├── ConfirmationCard.jsx  # Editable deal review card
-│   │       └── NewPartyCard.jsx      # New party detection card
-│   ├── hooks/
-│   │   ├── useVoice.js           # Voice recording state machine
-│   │   ├── useDeals.js           # Deal CRUD hook
-│   │   └── useParties.js         # Party CRUD hook
-│   ├── pages/
-│   │   ├── Home.jsx              # Dashboard + Voice entry point
-│   │   ├── Login.jsx             # Phone number login
-│   │   ├── Parties.jsx           # Party list
-│   │   ├── PartyDetail.jsx       # Individual party ledger
-│   │   ├── Deals.jsx             # All deals
-│   │   ├── AddDeal.jsx           # Manual deal entry form
-│   │   ├── AddPayment.jsx        # Manual payment entry form
-│   │   ├── Stock.jsx             # Inventory view
-│   │   └── Reports.jsx           # Business reports
-│   ├── services/
-│   │   ├── supabase.js           # All DB + Storage operations
-│   │   ├── gemini.js             # AI transaction parsing
-│   │   └── groq.js               # Speech-to-text
-│   └── utils/
-│       ├── formatAmount.js       # Indian number formatting (₹1.5L)
-│       └── formatDate.js         # Relative date formatting
-├── supabase_setup.sql            # Step 1: Database setup
-├── supabase_fix.sql              # Step 2: Fix RLS issues
-└── payment_proofs_setup.sql      # Step 3: Payment proof storage
-```
+## 📂 Project Structure (Highlights)
+- `src/pages/DayBook.jsx`: The digital daily log.
+- `src/pages/Reports.jsx`: Advanced P&L analytics.
+- `src/pages/Settings.jsx`: Business profile management.
+- `supabase/functions/whatsapp-incoming`: The central AI orchestrator.
+- `supabase/functions/daily-report`: The nightly summary engine.
 
 ---
 
-## 🔄 Voice Flow Architecture
+## 👨‍💻 Built with ❤️ for the Trading Community
+VyaparBook is designed to empower local Indian traders with enterprise-grade AI. It respects local business logic, local language, and the need for high-speed operation.
 
-```
-Tap Mic → Record Audio
-    ↓
-Groq Whisper → Transcribe to Text
-    ↓
-Gemini AI → Parse to JSON (Party, Type, Commodity, Qty, Rate, Total)
-    ↓
-Missing Fields? → FollowUpCard (Ask specific questions)
-    ↓
-New Party? → NewPartyCard (Categorize before saving)
-    ↓
-ConfirmationCard → Editable review with live calculations
-    ↓ 
-Payment Mode + Proof Upload (for payments)
-    ↓
-Save: Deal → Payment → Stock → VoiceLog → Dashboard Refresh ✅
-```
-
----
-
-## 🌐 Gemini API Quota Notes
-
-VyaparBook uses Google Gemini AI for parsing. On the **Free Tier**:
-- `gemini-2.5-flash`: 20 requests/day
-- `gemini-1.5-flash`: 15 requests/min
-
-The app automatically **falls back** through multiple models if one is rate-limited. For production use, add billing to your Google AI Studio account to increase limits significantly.
-
----
-
-## 📝 Database Schema
-
-| Table | Purpose |
-|-------|---------|
-| `users` | Trader profiles (phone-based login) |
-| `parties` | Buyers, sellers, farmers, millers |
-| `deals` | All purchase/sale transactions |
-| `payments` | Payment records with mode, txn ID, proof URL |
-| `stock` | Current inventory per commodity |
-| `voice_logs` | Raw voice + parsed data audit trail |
-
----
-
-## 👨‍💻 Built With ❤️ for Indian Traders
-
-VyaparBook is designed to replace the traditional physical Khata book that millions of Indian grain traders use daily. The app respects the local language (Telugu), local units (lorry, bags, quintals), and local payment methods (cash, PhonePe, cheque).
-
----
-
-*Version 1.1.0 — May 2026*
+*Version 2.0.0 — Stable Release — May 2026*
