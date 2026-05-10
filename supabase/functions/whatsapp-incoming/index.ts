@@ -258,16 +258,27 @@ Deno.serve(async (req) => {
 
           if (s.intent === 'TRANSACTION') {
             const total = s.total_amount || (Number(s.quantity || 0) * Number(s.rate || 0));
-            const { data: deal } = await supabase.from('deals').insert([{ user_id: user.id, party_id: partyId, type: s.type || 'purchase', commodity: s.commodity, quantity: s.quantity, unit: s.unit, rate: s.rate, total_amount: total, source: 'whatsapp' }]).select().single();
             
-            const { data: curStock } = await supabase.from('stock').select('*').eq('user_id', user.id).ilike('item_name', s.commodity).maybeSingle();
-            const change = s.type === 'sale' ? -Number(s.quantity) : Number(s.quantity);
-            if (curStock) await supabase.from('stock').update({ quantity: Number(curStock.quantity) + change }).eq('id', curStock.id);
-            else if (change > 0) await supabase.from('stock').insert([{ user_id: user.id, item_name: s.commodity, quantity: change, unit: s.unit }]);
+            // Use the unified atomic RPC for WhatsApp entries too!
+            const { data: atomicRes, error: atomicErr } = await supabase.rpc('create_deal_atomic', {
+              p_party_id: partyId,
+              p_type: s.type || 'purchase',
+              p_commodity: s.commodity,
+              p_quantity: Number(s.quantity) || 0,
+              p_unit: s.unit || 'bags',
+              p_rate: Number(s.rate) || 0,
+              p_total_amount: total,
+              p_advance_paid: 0, // Advance is handled separately if needed, but usually 0 for WhatsApp auto-deals
+              p_deal_date: new Date().toISOString().split('T')[0],
+              p_source: 'whatsapp',
+              p_user_id: user.id // Pass explicitly because SERVICE_ROLE has no auth.uid()
+            });
+
+            if (atomicErr) throw atomicErr;
 
             await supabase.from('whatsapp_sessions').update({ 
               status: 'waiting_for_extras', 
-              session_data: { ...s, tx_id: deal?.id, tx_type: 'DEAL' } 
+              session_data: { ...s, tx_id: atomicRes?.deal_id, tx_type: 'DEAL' } 
             }).eq('id', pendingSession.id);
             reply = `✅ *Saved!* 🎉\n\nNotes emaina add cheyala? Type cheyandi leda proof photo pampandi. 📸 (Leda 'No' kottandi)`;
           } else {
