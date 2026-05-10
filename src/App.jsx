@@ -19,6 +19,7 @@ import Reports from './pages/Reports';
 import Tools from './pages/Tools';
 import Expenses from './pages/Expenses';
 import Loans from './pages/Loans';
+import DayBook from './pages/DayBook';
 
 // Components
 import BottomNav from './components/common/BottomNav';
@@ -186,6 +187,7 @@ const App = () => {
               <Route path="/tools" element={<Tools user={user} />} />
               <Route path="/expenses" element={<Expenses user={user} />} />
               <Route path="/loans" element={<Loans user={user} />} />
+              <Route path="/daybook" element={<DayBook user={user} />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           )}

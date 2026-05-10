@@ -341,7 +341,7 @@ const TodayView = ({ data }) => (
 )
 
 const MonthlyView = ({ data }) => {
-  const net = data.sales.total - data.purchases.total
+  const net = data.sales.total - data.purchases.total - (data.totalExpenses || 0)
   return (
     <div>
       <h3 className="text-center font-bold text-lg mb-4">
@@ -349,40 +349,33 @@ const MonthlyView = ({ data }) => {
       </h3>
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-orange-50 rounded-2xl p-4 text-center">
-          <p className="text-xs text-gray-500 mb-1">
-            🛒 Purchases
-          </p>
-          <p className="text-xs text-gray-400 mb-1">
-            {data.purchases.count} deals
-          </p>
-          <p className="font-bold text-orange-600">
-            ₹{formatAmount(data.purchases.total)}
-          </p>
+          <p className="text-xs text-gray-500 mb-1">🛒 Purchases</p>
+          <p className="font-bold text-orange-600">₹{formatAmount(data.purchases.total)}</p>
         </div>
         <div className="bg-blue-50 rounded-2xl p-4 text-center">
-          <p className="text-xs text-gray-500 mb-1">
-            💰 Sales
-          </p>
-          <p className="text-xs text-gray-400 mb-1">
-            {data.sales.count} deals
-          </p>
-          <p className="font-bold text-blue-600">
-            ₹{formatAmount(data.sales.total)}
-          </p>
+          <p className="text-xs text-gray-500 mb-1">💰 Sales</p>
+          <p className="font-bold text-blue-600">₹{formatAmount(data.sales.total)}</p>
         </div>
       </div>
+      
+      {data.totalExpenses > 0 && (
+        <div className="bg-gray-50 rounded-2xl p-3 text-center mb-4 border border-gray-100">
+          <p className="text-xs text-gray-500">🏢 Expenses: <span className="font-bold text-gray-700">₹{formatAmount(data.totalExpenses)}</span></p>
+        </div>
+      )}
+
       <div className={`
         rounded-2xl p-4 text-center
         ${net >= 0 ? 'bg-green-50' : 'bg-red-50'}
       `}>
-        <p className="text-gray-500 text-sm">Net</p>
+        <p className="text-gray-500 text-sm">Net Profit</p>
         <p className={`text-2xl font-bold
           ${net >= 0 ? 'text-green-600' : 'text-red-600'}
         `}>
           ₹{formatAmount(Math.abs(net))}
         </p>
         <p className="text-sm text-gray-500">
-          {net >= 0 ? '✅ Profit' : '📉 Invested'}
+          {net >= 0 ? '✅ Business is profitable' : '📉 Higher investment/expenses'}
         </p>
       </div>
     </div>
@@ -402,23 +395,23 @@ const StockView = ({ data }) => (
           ">
             <div className="flex justify-between mb-3">
               <p className="font-bold text-lg">
-                🌾 {s.commodity}
+                🌾 {s.commodity || s.item_name}
               </p>
               <p className="font-bold text-orange-600">
-                {s.current_stock} {s.unit}
+                {s.current_stock || s.quantity} {s.unit}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-green-50 rounded-xl p-2 text-center">
                 <p className="text-xs text-gray-500">Purchased</p>
                 <p className="font-bold text-green-600">
-                  {s.total_purchased}
+                  {s.total_purchased || '-'}
                 </p>
               </div>
               <div className="bg-red-50 rounded-xl p-2 text-center">
                 <p className="text-xs text-gray-500">Sold</p>
                 <p className="font-bold text-red-600">
-                  {s.total_sold}
+                  {s.total_sold || '-'}
                 </p>
               </div>
             </div>
@@ -619,22 +612,18 @@ const AllTransactionsView = ({ data }) => (
 const FeaturesView = () => (
   <div className="space-y-3">
     {[
-      { icon: '🎤', title: 'Voice Entry',
-        desc: 'Telugu/English mein bolo, auto save!' },
-      { icon: '💸', title: 'Deal Tracking',
-        desc: 'Purchase aur Sale track karo' },
-      { icon: '💰', title: 'Payment Tracking',
-        desc: 'Partial payments supported' },
-      { icon: '📊', title: 'Pending Amounts',
-        desc: 'Party-wise pending instantly' },
-      { icon: '📋', title: 'Transaction History',
-        desc: 'Complete deal history' },
-      { icon: '📦', title: 'Stock Tracking',
-        desc: 'Godown inventory auto-updated' },
-      { icon: '📱', title: 'WhatsApp Integration',
-        desc: 'Voice notes se entry karo' },
-      { icon: '🔄', title: 'Real-time Sync',
-        desc: 'WhatsApp entry = instant PWA update' },
+      { icon: '🎤', title: 'Voice & WhatsApp Entry',
+        desc: 'Record deals via PWA mic or WhatsApp Voice Notes!' },
+      { icon: '📈', title: 'Profit & Loss Tracking',
+        desc: 'Real-time Net Profit (Sales - Purchase - Expenses)' },
+      { icon: '🤖', title: 'AI Business Brain',
+        desc: 'Ask complex questions like "How is my business this week?"' },
+      { icon: '📦', title: 'Auto Stock Update',
+        desc: 'Inventory updates instantly when you save a deal' },
+      { icon: '📸', title: 'Receipt Uploads',
+        desc: 'Attach proof of payments via WhatsApp or PWA' },
+      { icon: '🔄', title: 'Hybrid Sync',
+        desc: 'WhatsApp entry = Instant PWA update via Realtime' },
     ].map((f, i) => (
       <div key={i} className="
         flex items-start gap-3

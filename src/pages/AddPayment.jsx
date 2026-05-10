@@ -36,10 +36,10 @@ const AddPayment = ({ user }) => {
       return Number(d.total_amount) - paid > 0;
     });
     setDeals(openDeals);
-    if (openDeals.length > 0 && !form.deal_id) {
-      setForm(prev => ({ ...prev, deal_id: openDeals[0].id }));
+    if (openDeals.length > 0) {
+      setForm(prev => !prev.deal_id ? { ...prev, deal_id: openDeals[0].id } : prev);
     }
-  }, [form.deal_id]);
+  }, []);
 
   useEffect(() => {
     const load = async () => {

@@ -10,7 +10,7 @@ import DealEditModal from '../components/deals/DealEditModal';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import AmountCard from '../components/common/AmountCard';
 import { formatAmount } from '../utils/formatAmount';
-import { formatDateLong, formatRelative } from '../utils/formatDate';
+import { formatDateLong, formatRelative, formatDateShort } from '../utils/formatDate';
 
 const typeEmoji = { purchase: '🛒', sale: '💰', payment: '💸' };
 const typeColor = { purchase: 'bg-orange-100 text-orange-700', sale: 'bg-blue-100 text-blue-700' };
@@ -135,15 +135,22 @@ const PartyDetail = ({ user }) => {
   };
 
   const handleShare = async () => {
+    // Get last 3 transactions for the summary
+    const recent = deals.slice(0, 3).map(d => 
+      `• ${formatDateShort(d.deal_date)}: ${d.commodity} (${formatAmount(d.total_amount)})`
+    ).join('\n');
+
     const text =
-      `*${party?.name} — VyaparBook Ledger*\n\n` +
-      `📊 Total Business: ₹${formatAmount(totalBusiness)}\n` +
-      `✅ Total Paid: ₹${formatAmount(totalPaid)}\n` +
-      `🔴 Pending: ₹${formatAmount(totalPending)}\n\n` +
-      `_Powered by VyaparBook_`;
+      `*🧾 STATEMENT: ${party?.name}*\n` +
+      `--------------------------\n` +
+      `📊 *Total Business:* ₹${formatAmount(totalBusiness)}\n` +
+      `✅ *Total Paid:* ₹${formatAmount(totalPaid)}\n` +
+      `🔴 *PENDING:* ₹${formatAmount(totalPending)}\n\n` +
+      `*Recent Transactions:*\n${recent || 'No recent deals'}\n\n` +
+      `_Generated via VyaparBook_`;
 
     if (navigator.share) {
-      await navigator.share({ title: `${party?.name} Ledger`, text }).catch(() => {});
+      await navigator.share({ title: `${party?.name} Statement`, text }).catch(() => {});
     } else {
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
@@ -271,26 +278,36 @@ const PartyDetail = ({ user }) => {
       </div>
 
       {/* ── Action Buttons ── */}
-      <div className="px-4 mt-4 flex gap-2">
+      <div className="px-4 mt-4 grid grid-cols-2 gap-2">
         <button
           onClick={() => navigate(`/deals/add?party=${id}`)}
-          className="flex-1 bg-green-500 text-white py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 shadow-md shadow-green-200"
+          className="bg-green-500 text-white py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 shadow-md shadow-green-200"
         >
-          <Plus size={16} /> Add Deal
+          <Plus size={14} /> Add Deal
         </button>
         <button
           onClick={() => navigate(`/payments/add?party=${id}`)}
-          className="flex-1 bg-white border-2 border-gray-200 text-gray-700 py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2"
+          className="bg-white border-2 border-gray-200 text-gray-700 py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2"
         >
-          <Banknote size={16} /> Payment
+          <Banknote size={14} /> Payment
         </button>
-        {party?.phone && totalPending > 0 && (
+        <button
+          onClick={handleShare}
+          className="bg-blue-500 text-white py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-200"
+        >
+          <Share2 size={14} /> Statement
+        </button>
+        {party?.phone && totalPending > 0 ? (
           <button
             onClick={handleSendReminder}
-            className="flex-1 bg-emerald-500 text-white py-3 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-200"
+            className="bg-emerald-500 text-white py-3 rounded-2xl font-semibold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-200"
           >
-            <MessageCircle size={16} /> Remind
+            <MessageCircle size={14} /> Remind
           </button>
+        ) : (
+          <div className="bg-gray-100 rounded-2xl py-3 text-center text-[10px] font-bold text-gray-400 uppercase flex items-center justify-center">
+            No Pending
+          </div>
         )}
       </div>
 

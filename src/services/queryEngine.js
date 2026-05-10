@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
 import { computePending } from '../utils/computePending'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY)
 
 const inferQueryIntent = (text = '') => {
   const q = text.toLowerCase()
@@ -196,9 +199,16 @@ export const executeQuery = async (intent, userId, context = null) => {
           return { type: 'CLARIFY', question: 'Party peru cheppandi. Evari last payment kavali?' }
         }
         return attachAudit(await getLastPayment(userId, entities.party_name), type)
+      case 'QUERY_GENERAL_ANALYSIS':
+      case 'QUERY_HEALTH_CHECK':
+        return attachAudit(await getGeneralAnalysis(userId, intent?.original_text || 'summary'), type)
       case 'QUERY_FEATURES':
         return { type: 'FEATURES' }
       default:
+        // Try fallback analysis for anything unknown
+        if (type === 'UNKNOWN' && intent?.original_text) {
+          return attachAudit(await getGeneralAnalysis(userId, intent.original_text), 'QUERY_GENERAL_ANALYSIS')
+        }
         return { type: 'UNKNOWN' }
     }
   } catch (error) {
@@ -436,21 +446,24 @@ const getMonthlyBusiness = async (userId) => {
     now.getFullYear(), now.getMonth() + 1, 0
   ).toISOString().split('T')[0]
 
-  const { data: deals } = await supabase
-    .from('deals')
-    .select('*, parties(name)')
-    .eq('user_id', userId)
-    .gte('deal_date', firstDay)
-    .lte('deal_date', lastDay)
+  const [
+    { data: deals },
+    { data: expenses }
+  ] = await Promise.all([
+    supabase.from('deals').select('*, parties(name)').eq('user_id', userId).gte('deal_date', firstDay).lte('deal_date', lastDay),
+    supabase.from('expenses').select('*').eq('user_id', userId).gte('expense_date', firstDay).lte('expense_date', lastDay)
+  ]);
 
   const purchases = deals?.filter(d => d.type === 'purchase') || []
   const sales = deals?.filter(d => d.type === 'sale') || []
+  const totalExp = (expenses || []).reduce((s, e) => s + Number(e.amount), 0)
 
   return {
     type: 'MONTHLY_BUSINESS',
     month: now.toLocaleString('en-IN', { month: 'long' }),
     year: now.getFullYear(),
     deals: deals || [],
+    expenses: expenses || [],
     purchases: {
       count: purchases.length,
       total: purchases.reduce((s, d) => s + d.total_amount, 0)
@@ -458,7 +471,8 @@ const getMonthlyBusiness = async (userId) => {
     sales: {
       count: sales.length,
       total: sales.reduce((s, d) => s + d.total_amount, 0)
-    }
+    },
+    totalExpenses: totalExp
   }
 }
 
@@ -620,5 +634,57 @@ const getPendingToReceive = async (userId) => {
     type: 'PENDING_TO_RECEIVE',
     deals: dealsWithPending,
     totalPending: dealsWithPending.reduce((s, d) => s + d.pending_amount, 0)
+  }
+}
+
+// 13. General AI Analysis (The "Brain")
+const getGeneralAnalysis = async (userId, question) => {
+  // Fetch a snapshot of business health
+  const [pending, today, stock, monthly] = await Promise.all([
+    getAllPending(userId),
+    getTodayBusiness(userId),
+    getStockSummary(userId),
+    getMonthlyBusiness(userId)
+  ]);
+
+  const context = {
+    total_pending: pending.totalPending,
+    top_parties: pending.parties.slice(0, 3),
+    today_deals: today.totalDeals,
+    today_payments: today.totalPayments,
+    stock_count: stock.items.length,
+    monthly_sales: monthly.sales.total,
+    monthly_purchases: monthly.purchases.total
+  };
+
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const prompt = `
+      You are VyaparBook AI Accountant.
+      User asked: "${question}"
+      
+      Current Business Data:
+      ${JSON.stringify(context, null, 2)}
+      
+      Provide a helpful, professional, and concise answer in English/Telugu/Hindi (mix as appropriate for an Indian trader).
+      If the data is insufficient, say so politely.
+      Keep it under 100 words.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const answer = result.response.text();
+
+    return {
+      type: 'GENERAL_ANALYSIS',
+      answer,
+      data: context
+    };
+  } catch (err) {
+    console.error('AI Analysis failed:', err);
+    return {
+      type: 'GENERAL_ANALYSIS',
+      answer: "I'm having trouble analyzing your data right now. Please try again later.",
+      data: context
+    };
   }
 }

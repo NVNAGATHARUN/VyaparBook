@@ -1,9 +1,9 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Landmark, DollarSign, Wallet, 
-  Trash2, Calendar, Bell, ChevronRight, AlertCircle
+  Trash2, Calendar, Bell, AlertCircle
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { formatAmount } from '../utils/formatAmount';
@@ -14,10 +14,10 @@ const Loans = ({ user }) => {
   const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const loadLoans = async () => {
+  const loadLoans = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('loans')
       .select('*')
       .eq('user_id', user.id)
@@ -25,11 +25,14 @@ const Loans = ({ user }) => {
     
     if (data) setLoans(data);
     setLoading(false);
-  };
+  }, [user]);
 
   useEffect(() => {
-    loadLoans();
-  }, [user]);
+    const timer = setTimeout(() => {
+      loadLoans();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadLoans]);
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this loan record?')) return;

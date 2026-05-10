@@ -282,20 +282,25 @@ export const getVoiceLogs = async (userId, limit = 20) => {
 // ─── Dashboard Summary ────────────────────────────────────────────────────────
 
 export const getDashboardSummary = async (userId) => {
-  // Fetch deals with payments to calculate pending amounts reliably
-  const { data: deals, error } = await supabase
-    .from('deals')
-    .select('total_amount, type, deal_date, payments(amount)')
-    .eq('user_id', userId);
+  // Fetch deals, payments and expenses in parallel
+  const [
+    { data: deals, error: dealErr },
+    { data: expenses, error: expErr }
+  ] = await Promise.all([
+    supabase.from('deals').select('total_amount, type, deal_date, payments(amount)').eq('user_id', userId),
+    supabase.from('expenses').select('amount').eq('user_id', userId)
+  ]);
 
-  if (error) {
-    console.error('Error fetching dashboard summary:', error);
-    return { toPay: 0, toReceive: 0, todayTotal: 0 };
+  if (dealErr || expErr) {
+    console.error('Error fetching dashboard summary:', dealErr || expErr);
+    return { toPay: 0, toReceive: 0, todayTotal: 0, netProfit: 0, totalSales: 0 };
   }
 
   let toPay = 0;
   let toReceive = 0;
   let todayTotal = 0;
+  let totalSales = 0;
+  let totalPurchase = 0;
   const today = new Date().toISOString().split('T')[0];
 
   if (deals) {
@@ -304,8 +309,14 @@ export const getDashboardSummary = async (userId) => {
       const total = Number(deal.total_amount || 0);
       const pending = Math.max(0, total - paid);
 
-      if (deal.type === 'purchase') toPay += pending;
-      if (deal.type === 'sale') toReceive += pending;
+      if (deal.type === 'purchase') {
+        toPay += pending;
+        totalPurchase += total;
+      }
+      if (deal.type === 'sale') {
+        toReceive += pending;
+        totalSales += total;
+      }
       
       if (deal.deal_date === today) {
         todayTotal += total;
@@ -313,7 +324,62 @@ export const getDashboardSummary = async (userId) => {
     });
   }
 
-  return { toPay, toReceive, todayTotal };
+  const totalExp = (expenses || []).reduce((s, e) => s + Number(e.amount), 0);
+  const netProfit = totalSales - totalPurchase - totalExp;
+
+  return { toPay, toReceive, todayTotal, netProfit, totalSales, totalExp };
+};
+
+// ─── Detailed Reports ────────────────────────────────────────────────────────
+export const getDetailedReports = async (userId) => {
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const startDate = sixMonthsAgo.toISOString().split('T')[0];
+
+  const [
+    { data: deals, error: dealErr },
+    { data: expenses, error: expErr }
+  ] = await Promise.all([
+    supabase.from('deals').select('total_amount, type, deal_date').eq('user_id', userId).gte('deal_date', startDate),
+    supabase.from('expenses').select('amount, expense_date, category').eq('user_id', userId).gte('expense_date', startDate)
+  ]);
+
+  if (dealErr || expErr) throw dealErr || expErr;
+
+  const monthlyData = {};
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  // Initialize last 6 months
+  for (let i = 0; i < 6; i++) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    const key = `${months[d.getMonth()]} ${d.getFullYear()}`;
+    monthlyData[key] = { name: key, sales: 0, purchase: 0, expenses: 0, profit: 0 };
+  }
+
+  deals?.forEach(d => {
+    const date = new Date(d.deal_date);
+    const key = `${months[date.getMonth()]} ${date.getFullYear()}`;
+    if (monthlyData[key]) {
+      if (d.type === 'sale') monthlyData[key].sales += Number(d.total_amount);
+      else monthlyData[key].purchase += Number(d.total_amount);
+    }
+  });
+
+  expenses?.forEach(e => {
+    const date = new Date(e.expense_date);
+    const key = `${months[date.getMonth()]} ${date.getFullYear()}`;
+    if (monthlyData[key]) {
+      monthlyData[key].expenses += Number(e.amount);
+    }
+  });
+
+  const chartData = Object.values(monthlyData).reverse().map(m => ({
+    ...m,
+    profit: m.sales - m.purchase - m.expenses
+  }));
+
+  return chartData;
 };
 
 // ─── Party Summary (pending per party) ────────────────────────────────────────

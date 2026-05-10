@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, XCircle, Search, Lock, AlertCircle } from 'lucide-react';
 
 const unitOptions = ['bags', 'lorry', 'quintal', 'ton', 'kg'];
@@ -37,20 +37,24 @@ const ConfirmationCard = ({
   // REDO dialog state
   const [showRedoDialog, setShowRedoDialog] = useState(false);
 
-  // Live calculations
-  useEffect(() => {
-    const q = Number(quantity);
-    const r = Number(rate);
-    if (q > 0 && r > 0) {
-      setTotalAmount(q * r); // eslint-disable-line react-hooks/set-state-in-effect
-    }
-  }, [quantity, rate]);
+  const isPayment = type === 'payment';
 
-  useEffect(() => {
-    const t = Number(totalAmount);
-    const a = Number(advancePaid);
-    setPendingAmount(Math.max(0, t - a)); // eslint-disable-line react-hooks/set-state-in-effect
-  }, [totalAmount, advancePaid]);
+  // Live calculations moved to event handlers to avoid cascading renders
+  const updateAmounts = (newQty, newRate, newTotal, newAdvance) => {
+    const q = newQty !== undefined ? Number(newQty) : Number(quantity);
+    const r = newRate !== undefined ? Number(newRate) : Number(rate);
+    const t = newTotal !== undefined ? Number(newTotal) : Number(totalAmount);
+    const a = newAdvance !== undefined ? Number(newAdvance) : Number(advancePaid);
+
+    let calculatedTotal = t;
+    if (!isPayment && (newQty !== undefined || newRate !== undefined)) {
+      calculatedTotal = q * r;
+      if (calculatedTotal > 0) setTotalAmount(calculatedTotal);
+    }
+
+    const calculatedPending = Math.max(0, calculatedTotal - a);
+    setPendingAmount(calculatedPending);
+  };
 
   // Clear error when field is fixed
   const clearError = (field) => {
@@ -106,8 +110,6 @@ const ConfirmationCard = ({
   const handleRedoClick = () => setShowRedoDialog(true);
   const handleRedoConfirm = () => { setShowRedoDialog(false); onRedo(); };
   const handleRedoCancel = () => setShowRedoDialog(false);
-
-  const isPayment = type === 'payment';
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden w-full max-w-md mx-auto animate-slide-up">
@@ -235,7 +237,11 @@ const ConfirmationCard = ({
                 <input
                   type="number"
                   value={quantity}
-                  onChange={(e) => { setQuantity(e.target.value); clearError('quantity'); }}
+                  onChange={(e) => { 
+                    setQuantity(e.target.value); 
+                    clearError('quantity');
+                    updateAmounts(e.target.value, undefined, undefined, undefined);
+                  }}
                   className={`w-full border-2 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none transition-colors ${
                     errors.quantity ? 'border-red-400 bg-red-50' : 'border-gray-200 focus:border-green-500'
                   }`}
@@ -271,7 +277,11 @@ const ConfirmationCard = ({
                 <input
                   type="number"
                   value={rate}
-                  onChange={(e) => { setRate(e.target.value); clearError('rate'); }}
+                  onChange={(e) => { 
+                    setRate(e.target.value); 
+                    clearError('rate');
+                    updateAmounts(undefined, e.target.value, undefined, undefined);
+                  }}
                   className={`w-full border-2 rounded-xl pl-8 pr-3 py-2.5 text-sm font-semibold outline-none transition-colors ${
                     errors.rate ? 'border-red-400 bg-red-50' : 'border-gray-200 focus:border-green-500'
                   }`}
@@ -297,7 +307,11 @@ const ConfirmationCard = ({
             <input
               type="number"
               value={totalAmount}
-              onChange={(e) => { setTotalAmount(e.target.value); clearError('totalAmount'); }}
+              onChange={(e) => { 
+                setTotalAmount(e.target.value); 
+                clearError('totalAmount');
+                updateAmounts(undefined, undefined, e.target.value, undefined);
+              }}
               readOnly={!isPayment}
               className={`w-full border-2 rounded-xl pl-8 pr-10 py-2.5 text-sm font-bold outline-none transition-colors ${
                 errors.totalAmount
@@ -324,7 +338,11 @@ const ConfirmationCard = ({
             <input
               type="number"
               value={advancePaid}
-              onChange={(e) => { setAdvancePaid(e.target.value); clearError('advancePaid'); }}
+              onChange={(e) => { 
+                setAdvancePaid(e.target.value); 
+                clearError('advancePaid');
+                updateAmounts(undefined, undefined, undefined, e.target.value);
+              }}
               className={`w-full border-2 rounded-xl pl-8 pr-3 py-2.5 text-sm font-semibold outline-none transition-colors ${
                 errors.advancePaid ? 'border-red-400 bg-red-50' : 'border-gray-200 focus:border-green-500'
               }`}

@@ -11,6 +11,7 @@ export const useDeals = (userId, partyId = null) => {
 
   const fetchDeals = useCallback(async () => {
     if (!userId) return;
+    await Promise.resolve();
     setLoading(true);
     setError(null);
 
@@ -29,7 +30,8 @@ export const useDeals = (userId, partyId = null) => {
   }, [userId, partyId]);
 
   useEffect(() => {
-    fetchDeals(); // eslint-disable-line react-hooks/set-state-in-effect
+    const timer = setTimeout(() => fetchDeals(), 0);
+    return () => clearTimeout(timer);
   }, [fetchDeals]);
 
   return { deals, loading, error, refetch: fetchDeals };

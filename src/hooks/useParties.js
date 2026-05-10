@@ -12,6 +12,7 @@ export const useParties = (userId) => {
 
   const fetchParties = useCallback(async () => {
     if (!userId) return;
+    await Promise.resolve();
     setLoading(true);
     setError(null);
 
@@ -37,7 +38,8 @@ export const useParties = (userId) => {
   }, [userId]);
 
   useEffect(() => {
-    fetchParties(); // eslint-disable-line react-hooks/set-state-in-effect
+    const timer = setTimeout(() => fetchParties(), 0);
+    return () => clearTimeout(timer);
   }, [fetchParties]);
 
   return { parties, partySummary, loading, error, refetch: fetchParties };

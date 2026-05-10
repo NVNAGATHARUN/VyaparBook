@@ -162,6 +162,7 @@ const Home = ({ user, onLogout }) => {
 
   const loadData = useCallback(async () => {
     if (!user) return;
+    await Promise.resolve();
     setLoadingData(true);
     setDbError(null);
     try {
@@ -183,21 +184,26 @@ const Home = ({ user, onLogout }) => {
   }, [user]);
 
   useEffect(() => {
-    loadData(); // eslint-disable-line react-hooks/set-state-in-effect
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    const timer = setTimeout(() => {
+      loadData();
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadData]);
 
   // Reload when navigated back from AddPayment / AddDeal with refresh flag
   useEffect(() => {
     if (location.state?.refresh) {
-      loadData(); // eslint-disable-line react-hooks/set-state-in-effect
-      window.history.replaceState({}, '');
-      setTimeout(() => showToast('✅ Payment saved!'), 0);
+      const timer = setTimeout(() => {
+        loadData();
+        window.history.replaceState({}, '');
+        showToast('✅ Payment saved!');
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state?.refresh]);
+  }, [location.state?.refresh, loadData]);
 
   // ── Realtime Sync ────────────────────────────────────────────────────────
   useRealtime({
@@ -462,19 +468,26 @@ const Home = ({ user, onLogout }) => {
             <LoadingSpinner size="sm" />
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-2 gap-3 mb-4">
                 <AmountCard label="💸 To Pay" amount={summary.toPay} variant="danger" size="sm" />
                 <AmountCard label="💰 To Receive" amount={summary.toReceive} variant="success" size="sm" />
               </div>
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl px-4 py-3 flex items-center justify-between border border-blue-100">
-                <div>
-                  <p className="text-blue-500 text-xs font-semibold">Today's Business</p>
-                  <p className="text-blue-800 text-lg font-black font-mono-amount">
-                    {formatAmount(summary.todayTotal)}
-                  </p>
-                </div>
-                <div className="text-2xl">📊</div>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <AmountCard 
+                  label="📈 Net Profit" 
+                  amount={summary.netProfit} 
+                  variant={summary.netProfit >= 0 ? 'blue' : 'danger'} 
+                  size="sm" 
+                  subLabel={summary.netProfit >= 0 ? 'Good' : 'Needs attention'}
+                />
+                <AmountCard label="📊 Today" amount={summary.todayTotal} variant="warning" size="sm" />
               </div>
+              <button 
+                onClick={() => navigate('/reports')}
+                className="w-full py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-gray-600 text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
+              >
+                View Full Reports 📊
+              </button>
             </>
           )}
         </div>
@@ -541,27 +554,34 @@ const Home = ({ user, onLogout }) => {
       </div>
 
       {/* Quick Actions */}
-      <div className="px-4 mt-4 grid grid-cols-3 gap-3">
+      <div className="px-4 mt-4 grid grid-cols-4 gap-3">
         <button
           onClick={() => navigate('/deals/add')}
           className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100 active:scale-95 transition-transform"
         >
           <div className="text-2xl mb-1">📝</div>
-          <p className="text-xs font-semibold text-gray-600">Add Deal</p>
+          <p className="text-[10px] font-bold text-gray-600 uppercase">Add Deal</p>
         </button>
         <button
           onClick={() => navigate('/parties')}
           className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100 active:scale-95 transition-transform"
         >
           <div className="text-2xl mb-1">👥</div>
-          <p className="text-xs font-semibold text-gray-600">Parties</p>
+          <p className="text-[10px] font-bold text-gray-600 uppercase">Parties</p>
+        </button>
+        <button
+          onClick={() => navigate('/daybook')}
+          className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100 active:scale-95 transition-transform"
+        >
+          <div className="text-2xl mb-1">📖</div>
+          <p className="text-[10px] font-bold text-gray-600 uppercase">Day Book</p>
         </button>
         <button
           onClick={() => navigate('/payments/add')}
           className="bg-white rounded-2xl p-3 text-center shadow-sm border border-gray-100 active:scale-95 transition-transform"
         >
           <div className="text-2xl mb-1">💳</div>
-          <p className="text-xs font-semibold text-gray-600">Payment</p>
+          <p className="text-[10px] font-bold text-gray-600 uppercase">Payment</p>
         </button>
       </div>
 

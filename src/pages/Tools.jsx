@@ -2,8 +2,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Calculator, Receipt, Wallet, ArrowLeft, 
-  ChevronRight, TrendingUp, Landmark, DollarSign, Package
+  Calculator, Receipt, ArrowLeft, 
+  ChevronRight, Landmark, Package,
+  User, LogOut
 } from 'lucide-react';
 import InterestCalculator from '../components/tools/InterestCalculator';
 import { supabase } from '../services/supabase';
@@ -101,6 +102,43 @@ const Tools = ({ user }) => {
                 <p className="text-gray-400 text-xs">View inventory levels</p>
               </div>
               <ChevronRight className="text-gray-300 group-hover:text-orange-500" />
+            </button>
+
+            <div className="pt-4 pb-2">
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1 mb-2">Account & Support</p>
+            </div>
+
+            <button
+              onClick={() => navigate('/settings')}
+              className="w-full bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4 group active:scale-95 transition-all"
+            >
+              <div className="w-14 h-14 bg-gray-100 text-gray-600 rounded-2xl flex items-center justify-center shrink-0">
+                <User size={28} />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-black text-gray-900 text-lg">Settings</p>
+                <p className="text-gray-400 text-xs">Business profile & preferences</p>
+              </div>
+              <ChevronRight className="text-gray-300 group-hover:text-gray-500" />
+            </button>
+
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to logout?')) {
+                  localStorage.removeItem('vyapar_user');
+                  window.location.href = '/login';
+                }
+              }}
+              className="w-full bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4 group active:scale-95 transition-all"
+            >
+              <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0">
+                <LogOut size={28} />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-black text-rose-600 text-lg">Logout</p>
+                <p className="text-rose-400 text-xs">Sign out of VyaparBook</p>
+              </div>
+              <ChevronRight className="text-gray-300 group-hover:text-rose-500" />
             </button>
           </div>
         )}

@@ -1,16 +1,5 @@
 // Supabase Edge Function: whatsapp-incoming
-// Deploy with: supabase functions deploy whatsapp-incoming
-//
-// This is the MAIN brain of the WhatsApp bot.
-// n8n calls this endpoint with every incoming WhatsApp message.
-//
-// POST body from n8n:
-// {
-//   "phone": "919876543210",
-//   "message_type": "text" or "audio",
-//   "text": "message text (if text type or after transcription)",
-//   "message_id": "unique whatsapp message id"
-// }
+// Final Master Version - Robust, Conversational, and Precise
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -19,413 +8,325 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ─── Intent Detection ─────────────────────────────────────────────────────────
-const detectIntent = (text, pendingIntent = null) => {
-  const t = text.toLowerCase().trim();
-  if (t === '1' || t === 'yes' || t === 'confirm' || t === 'sare') return 'CONFIRM_YES';
-  if (t === '2' || t === 'no' || t === 'cancel' || t === 'vaddu') return 'CONFIRM_NO';
-  if (pendingIntent === 'ASK_RATE' && /^\d+(\.\d+)?$/.test(t)) return 'PROVIDE_RATE';
-  
-  if (/^(hi|hello|hey|namaste|swagatam|good morning|hii|helo)\b/.test(t)) return 'GREETING';
-  if (/thank you|thanks|dhanyawaad|shukriya/.test(t)) return 'THANK_YOU';
+// ─── AI BRAIN: Universal Business Intelligence ──────────────────────────────
+const analyzeWithAI = async (text, context, config) => {
+  const { groqKey } = config;
+  console.log('🤖 Business Analysis:', text);
 
-  if (t.includes('pending') || t.includes('baaki') || t.includes('balance') || t.includes('ela undi')) return 'QUERY_PENDING';
-  if (t.includes('stock') || t.includes('godown') || t.includes('maal')) return 'QUERY_STOCK';
-  if (t.includes('summary') || t.includes('report') || t.includes('today') || t.includes('ivvaalu')) return 'QUERY_SUMMARY';
-  return 'TRANSACTION';
-};
+  const prompt = `
+    You are VyaparBook Agent. Be SHORT & SWEET. Businessmen value speed.
+    Goal: Accurate transaction parsing or data query.
 
-// ─── Amount formatter ─────────────────────────────────────────────────────────
-const fmt = (n) => {
-  const num = Number(n) || 0;
-  if (num >= 10000000) return `₹${(num / 10000000).toFixed(2)} Cr`;
-  if (num >= 100000)   return `₹${(num / 100000).toFixed(2)} L`;
-  if (num >= 1000)     return `₹${(num / 1000).toFixed(1)}K`;
-  return `₹${num.toLocaleString('en-IN')}`;
-};
+    STRICT RULES:
+    1. If missing info (Party name, Amount, or Type), return intent: "CLARIFY" and a short question.
+    2. NEVER hallucinate. If unsure, ASK.
+    3. TRANSACTION: Use for deals. Entities: party_name, commodity, quantity, unit, rate, amount, type (purchase/sale).
+    4. PAYMENT: Use for cash/upi. Entities: party_name, amount, payment_type (in/out).
+    5. QUERY: Use for reports/baaki. 
+    
+    TONE: Professional Tenglish. Max 2 sentences.
+    Return JSON ONLY: { "intent": "TYPE", "entities": {...}, "reply": "short reply if clarify" }
+  `;
 
-// ─── Templates ────────────────────────────────────────────────────────────────
-const tmpl = {
-  notRegistered: (phone) =>
-    `👋 *Namaste! VyaparBook lo register avvandi!*\n\nYour number (${phone}) is not registered yet. It only takes a minute to set up your digital khata!\n\n🔗 vyaparbook.com`,
-
-  greeting: (name) =>
-    `👋 *Namaste ${name || 'ji'}!* 🙏\n\nVyaparBook ki swagatam! Nenu meeku ela sahayapada galanu?\n\nMeeru voice notes tho transactions record cheyachu, leda pending balance adagachu.\n\n_Example: "Ravi degara 5 lorry paddy konnanu"_`,
-
-  thankYou: () =>
-    `🙏 *Swagatam!* Meeru eppudu sahayapada galigithe naku chala santhosham.\n\nInkemaina transactions record cheyali ante ventane voice note pampandi!`,
-
-  transactionConfirm: (d) =>
-    `✅ *Confirm Cheyali?*\n\n${d.type === 'purchase' ? '🛒' : '💰'} *${(d.type||'').toUpperCase()}*\n👤 Party: *${d.party_name}*\n🌾 ${d.quantity} ${d.unit} ${d.commodity}\n💰 Rate: *${fmt(d.rate)}/${d.unit}*\n📊 Total: *${fmt(d.total_amount)}*\n💵 Advance: ${fmt(d.advance_paid)}\n⏳ Pending: *${fmt(d.pending_amount)}*\n\n1️⃣ Confirm ✅\n2️⃣ Redo ❌`,
-
-  paymentConfirm: (d) =>
-    `💸 *Payment Confirm?*\n\n👤 Party: *${d.party_name}*\n💰 Amount: *${fmt(d.total_amount)}*\n\n1️⃣ Yes ✅\n2️⃣ No ❌`,
-
-  askRate: (d) =>
-    `🤔 *Rate cheppaledu!*\n\n${d.type === 'purchase' ? '🛒' : '💰'} ${d.type}\n👤 ${d.party_name}\n📦 ${d.quantity} ${d.unit}\n\nOka ${d.unit} ki enta rate?\n\n(Just type the number)\nExample: *2350*`,
-
-  success: (d) =>
-    `✅ *Successfully Saved!* 🙏\n\n👤 ${d.party_name}\n📊 ${fmt(d.total_amount)}\n⏳ Pending: ${fmt(d.pending_amount)}\n\n_Tip: Meeru payment proof/receipt photo unte pampachu, nenu save chesthanu!_ 📸`,
-
-  pendingQuery: (partyName, summary) =>
-    `👤 *${partyName} Summary*\n\n📊 Total: ${fmt(summary.total)}\n✅ Paid: ${fmt(summary.paid)}\n🔴 *Pending: ${fmt(summary.pending)}*\n\n🔗 vyaparbook.com`,
-
-  stockQuery: (items) =>
-    `📦 *Current Stock*\n\n${items.length > 0 ? items.map(s => `• *${s.commodity}*: ${s.current_stock} ${s.unit}`).join('\n') : 'Stock information not available.'}\n\n🔗 vyaparbook.com`,
-
-  error: (msg) =>
-    `❌ *Error!*\n\n${msg}\n\nPlease try again or open:\n🔗 vyaparbook.com`,
-
-  sessionExpired: () =>
-    `⏰ *Session expire aindi!*\n\nMalli record cheyyandi 🎤`,
-};
-
-// ─── Groq Parser ────────────────────────────────────────────────────────────
-const parseWithGroq = async (text, groqKey) => {
-  const prompt = `You are VyaparBook AI for Indian grain traders.
-Extract transaction from: "${text}"
-Text may be Telugu/English/Tenglish.
-Return ONLY valid JSON, no markdown:
-{"party_name":"string","type":"purchase|sale|payment","commodity":"string or null","quantity":number or null,"unit":"bags|lorry|quintal|ton|kg or null","rate":number or null,"total_amount":number,"advance_paid":number,"pending_amount":number,"notes":"string or null"}
-Rules: purchase=we bought, sale=we sold, payment=money transfer. If qty and rate given, total=qty*rate. Telugu: degara=from, ki=to, konna=bought, ammanu=sold, pay chesanu=paid.`;
-
-  const res = await fetch(
-    `https://api.groq.com/openai/v1/chat/completions`,
-    {
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${groqKey}`,
-        'Content-Type': 'application/json' 
-      },
+      headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: prompt }]
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+        response_format: { type: 'json_object' }
       }),
-    }
-  );
-  const json = await res.json();
-  let raw = json.choices?.[0]?.message?.content?.trim() || '';
-  raw = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-  return JSON.parse(raw);
+    });
+    const json = await res.json();
+    return JSON.parse(json.choices?.[0]?.message?.content || '{}');
+  } catch (err) {
+    return { intent: 'CLARIFY', reply: "Technical error. Please try again." };
+  }
 };
 
-// ─── Main Handler ─────────────────────────────────────────────────────────────
+// ─── Data Analysis Handler ──────────────────────────────────────────────────
+const getGeneralAnalysis = async (supabase, userId, question, groqKey) => {
+  try {
+    const [
+      { data: deals },
+      { data: stock },
+      { data: parties },
+      { data: payments },
+      { data: expenses }
+    ] = await Promise.all([
+      supabase.from('deals').select('*, parties(name)').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
+      supabase.from('stock').select('*').eq('user_id', userId),
+      supabase.from('parties').select('*').eq('user_id', userId),
+      supabase.from('payments').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(30),
+      supabase.from('expenses').select('*').eq('user_id', userId)
+    ]);
+
+    // Calculate basic stats for the prompt
+    const totalSales = (deals || []).filter(d => d.type === 'sale').reduce((s, d) => s + Number(d.total_amount), 0);
+    const totalPurchase = (deals || []).filter(d => d.type === 'purchase').reduce((s, d) => s + Number(d.total_amount), 0);
+    const totalExp = (expenses || []).reduce((s, e) => s + Number(e.amount), 0);
+    const netProfit = totalSales - totalPurchase - totalExp;
+
+    const systemPrompt = `
+      You are VyaparBook Agent. Be FAST & ACCURATE. 
+      Analyze the data and answer the question in max 3-4 bullet points.
+      
+      STATS: Sales ${totalSales}, Purchase ${totalPurchase}, Net ${netProfit}.
+      PENDING: Calculate accurately from DEALS (Total - Payments).
+      
+      TONE: Bullet points. Tenglish. No fluff.
+      QUESTION: "${question}"
+    `;
+
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'system', content: systemPrompt }],
+        max_tokens: 300
+      }),
+    });
+    const json = await res.json();
+    return json.choices?.[0]?.message?.content || "I'm having trouble analyzing your data. 🙏";
+  } catch (err) {
+    return `Analysis Error: ${err.message}`;
+  }
+};
+
+const fmt = (n) => (Number(n) || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+// ─── Media Handling Helpers ──────────────────────────────────────────────────
+const downloadMedia = async (mediaId, config) => {
+  const { waToken } = config;
+  const res = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+    headers: { 'Authorization': `Bearer ${waToken}` }
+  });
+  const { url } = await res.json();
+  const mediaRes = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${waToken}` }
+  });
+  return await mediaRes.blob();
+};
+
+const transcribeAudio = async (blob, config) => {
+  const { groqKey } = config;
+  const formData = new FormData();
+  formData.append('file', blob, 'recording.ogg');
+  formData.append('model', 'whisper-large-v3');
+  formData.append('language', 'te'); // Support Telugu/Tenglish specifically
+
+  const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${groqKey}` },
+    body: formData
+  });
+  const json = await res.json();
+  return json.text || "";
+};
+
+// ─── Main Handler ────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL'),
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    );
+    const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
     const groqKey = Deno.env.get('GROQ_API_KEY');
+    const waToken = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
 
     const body = await req.json();
-    const { phone, message_type, text, message_id } = body;
+    const phone = body.phone;
+    let text = body.text || "";
+    const mediaId = body.audio_id || body.image_id;
+    const mediaType = body.audio_id ? 'audio' : (body.image_id ? 'image' : null);
 
-    if (!phone || !text) {
-      return new Response(JSON.stringify({ reply: tmpl.error('Invalid request') }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    if (!phone) return new Response('Missing phone', { status: 400 });
 
-    // ── Step 1: Find user by phone ──────────────────────────────────────────
-    const { data: waUser } = await supabase
-      .from('whatsapp_users')
-      .select('*, users(*)')
-      .eq('phone', phone)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (!waUser) {
-      return new Response(JSON.stringify({ reply: tmpl.notRegistered(phone) }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const { data: waUser } = await supabase.from('whatsapp_users').select('*, users(*)').eq('phone', phone).eq('is_active', true).maybeSingle();
+    if (!waUser) return new Response(JSON.stringify({ reply: "👋 Welcome to VyaparBook! Please register at vyaparbook.vercel.app" }), { headers: corsHeaders });
 
     const user = waUser.users;
-    const userId = user.id;
 
-    // DB-level idempotency guard using provider message id
-    if (message_id) {
-      const { error: eventErr } = await supabase
-        .from('whatsapp_message_events')
-        .insert([{
-          user_id: userId,
-          phone,
-          fingerprint: `provider:${message_id}`,
-          raw_text: text
-        }]);
+    // --- Check for follow-up notes or deal allocation ---
+    if (pendingSession?.status === 'waiting_for_extras' && text) {
+      const { tx_id, tx_type } = pendingSession.session_data;
+      const table = tx_type === 'PAYMENT' ? 'payments' : 'deals';
+      await supabase.from(table).update({ notes: text }).eq('id', tx_id);
+      await supabase.from('whatsapp_sessions').update({ status: 'confirmed' }).eq('id', pendingSession.id);
+      return new Response(JSON.stringify({ reply: "✅ Notes added! Transaction complete. 👍" }), { headers: corsHeaders });
+    }
 
-      if (eventErr && String(eventErr.message || '').toLowerCase().includes('duplicate')) {
-        return new Response(
-          JSON.stringify({ reply: '✅ Duplicate message ignore chesanu.' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+    if (pendingSession?.status === 'waiting_for_deal_allocation' && text) {
+      const selection = parseInt(text);
+      const candidates = pendingSession.session_data.candidates || [];
+      if (selection > 0 && selection <= candidates.length) {
+        const deal = candidates[selection - 1];
+        const s = pendingSession.session_data;
+        const { data: pay } = await supabase.from('payments').insert([{ 
+          user_id: user.id, party_id: s.party_id, amount: s.amount, type: s.payment_type || 'in', deal_id: deal.id, source: 'whatsapp' 
+        }]).select().single();
+        
+        await supabase.from('whatsapp_sessions').update({ 
+          status: 'waiting_for_extras', 
+          session_data: { ...s, tx_id: pay?.id, tx_type: 'PAYMENT' } 
+        }).eq('id', pendingSession.id);
+
+        return new Response(JSON.stringify({ reply: `✅ Linked to *${deal.commodity}*! 🎉\n\nNotes emaina add cheyala?` }), { headers: corsHeaders });
       }
     }
 
-    // ── Step 2: Check for pending session ──────────────────────────────────
-    await supabase.rpc('expire_whatsapp_sessions'); // Clean expired sessions
-
-    const { data: pendingSession } = await supabase
-      .from('whatsapp_sessions')
-      .select('*')
-      .eq('phone', phone)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const pendingIntent = pendingSession?.pending_intent || null;
-
-    // ── Step 3: Detect intent ───────────────────────────────────────────────
-    const intent = detectIntent(text, pendingIntent);
-
-    // ── Step 4: Route by intent ─────────────────────────────────────────────
-
-    // -- Greeting --
-    if (intent === 'GREETING') {
-      return new Response(JSON.stringify({ reply: tmpl.greeting(user.name) }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // --- Media Processing ---
+    if (mediaType === 'audio' && mediaId) {
+      const blob = await downloadMedia(mediaId, { waToken });
+      text = await transcribeAudio(blob, { groqKey });
+      console.log('🎤 Transcribed Audio:', text);
     }
 
-    // -- Thank You --
-    if (intent === 'THANK_YOU') {
-      return new Response(JSON.stringify({ reply: tmpl.thankYou() }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    if (mediaType === 'image' && mediaId) {
+      const blob = await downloadMedia(mediaId, { waToken });
+      const fileName = `${user.id}/${Date.now()}.jpg`;
+      await supabase.storage.from('payment_proofs').upload(fileName, blob, { contentType: 'image/jpeg' });
+      const { data: { publicUrl } } = supabase.storage.from('payment_proofs').getPublicUrl(fileName);
 
-    // -- Confirmation YES --
-    if (intent === 'CONFIRM_YES' && pendingSession) {
-      const data = pendingSession.session_data;
+      // Link to last deal/payment
+      let targetId = pendingSession?.session_data?.tx_id;
+      let targetTable = pendingSession?.session_data?.tx_type === 'PAYMENT' ? 'payments' : 'deals';
 
-      // Mark session confirmed
-      await supabase
-        .from('whatsapp_sessions')
-        .update({ status: 'confirmed' })
-        .eq('id', pendingSession.id);
-
-      // Save the deal
-      const today = new Date().toISOString().split('T')[0];
-
-      // Find or create party
-      let partyId;
-      const { data: existingParty } = await supabase
-        .from('parties')
-        .select('id')
-        .eq('user_id', userId)
-        .ilike('name', data.party_name.trim())
-        .maybeSingle();
-
-      if (existingParty) {
-        partyId = existingParty.id;
-      } else {
-        const { data: newParty } = await supabase
-          .from('parties')
-          .insert([{ user_id: userId, name: data.party_name, type: 'other' }])
-          .select()
-          .single();
-        partyId = newParty.id;
+      if (!targetId) {
+        const { data: lastP } = await supabase.from('payments').select('id').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        targetId = lastP?.id;
+        targetTable = 'payments';
       }
 
-      if (data.type === 'payment') {
-        await supabase.from('payments').insert([{
-          user_id: userId,
-          amount: data.total_amount,
-          payment_mode: 'cash',
-          payment_date: today,
-          source: 'whatsapp',
-        }]);
-      } else {
-        const { data: deal } = await supabase
-          .from('deals')
-          .insert([{
-            user_id: userId,
-            party_id: partyId,
-            type: data.type,
-            commodity: data.commodity,
-            quantity: data.quantity,
-            unit: data.unit,
-            rate: data.rate,
-            total_amount: data.total_amount,
-            deal_date: today,
-            source: 'whatsapp',
-          }])
-          .select()
-          .single();
+      if (targetId) {
+        await supabase.from(targetTable).update({ proof_url: publicUrl }).eq('id', targetId);
+        if (pendingSession) await supabase.from('whatsapp_sessions').update({ status: 'confirmed' }).eq('id', pendingSession.id);
+        return new Response(JSON.stringify({ reply: "📸 Proof linked! Transactions perfectly save ayyayi. ✅" }), { headers: corsHeaders });
+      }
+    }
 
-        if (data.advance_paid > 0) {
-          await supabase.from('payments').insert([{
-            deal_id: deal.id,
-            user_id: userId,
-            amount: data.advance_paid,
-            payment_mode: 'cash',
-            payment_date: today,
-            source: 'whatsapp',
-          }]);
+    let analysis = await analyzeWithAI(text, pendingSession?.session_data, { groqKey });
+    let intent = (analysis.intent || 'QUERY').toUpperCase();
+
+    // Manual Overrides
+    if (text === '1' || text.toLowerCase() === 'yes') intent = 'CONFIRM_YES';
+    if (text === '2' || text.toLowerCase() === 'no') intent = 'CONFIRM_NO';
+
+    let reply = "";
+
+    switch (intent) {
+      case 'CLARIFY':
+        reply = analysis.reply || "Konchem details ivvandi (Party/Amount).";
+        break;
+
+      case 'GREETING':
+        reply = `Namaste ${user.name}! 🙏 VyaparBook AI ikkada. Deals pampandi leda baaki adagandi. *Short & Fast!* ⚡`;
+        break;
+      
+      case 'HELP':
+        reply = `✅ *Sold 10 paddy Ravi*\n💸 *Got 5000 Ravi*\n📊 *Stock?*\n📈 *Profit?*\n🎤 Voice kuda pani chestundi!`;
+        break;
+
+      case 'TRANSACTION':
+      case 'PAYMENT':
+        const d = analysis.entities || {};
+        if (!d.party_name && !d.amount && !d.quantity) {
+           return new Response(JSON.stringify({ reply: "Ardam kaledu. Party peru and amount cheppandi. 🙏" }), { headers: corsHeaders });
         }
+        await supabase.from('whatsapp_sessions').insert([{ phone, user_id: user.id, session_data: { ...d, intent }, status: 'pending' }]);
+        if (intent === 'TRANSACTION') {
+          const total = d.total_amount || (Number(d.quantity || 0) * Number(d.rate || 0));
+          reply = `✅ *Confirm Deal?*\n👤 ${d.party_name}\n📦 ${d.quantity} ${d.commodity}\n💰 *${fmt(total)}*\n\n1️⃣ Confirm | 2️⃣ Cancel`;
+        } else {
+          reply = `✅ *Confirm Payment?*\n👤 ${d.party_name}\n💰 *${fmt(d.amount)}*\n\n1️⃣ Confirm | 2️⃣ Cancel`;
+        }
+        break;
 
-        // Update stock
-        if (data.commodity && data.quantity > 0) {
-          const { data: existing } = await supabase
-            .from('stock')
-            .select('*')
-            .eq('user_id', userId)
-            .ilike('commodity', data.commodity)
-            .maybeSingle();
-
-          const delta = data.type === 'purchase' ? data.quantity : -data.quantity;
-          if (existing) {
-            await supabase.from('stock')
-              .update({ current_stock: Math.max(0, existing.current_stock + delta) })
-              .eq('id', existing.id);
-          } else {
-            await supabase.from('stock').insert([{
-              user_id: userId,
-              commodity: data.commodity,
-              unit: data.unit,
-              current_stock: Math.max(0, delta),
-            }]);
+      case 'CONFIRM_YES':
+        if (pendingSession) {
+          const s = pendingSession.session_data;
+          let partyId = s.party_id;
+          if (!partyId && s.party_name) {
+             const { data: p } = await supabase.from('parties').select('id').ilike('name', s.party_name).maybeSingle();
+             if (p) partyId = p.id;
+             else {
+               const { data: newP } = await supabase.from('parties').insert([{ name: s.party_name, user_id: user.id }]).select().single();
+               partyId = newP?.id;
+             }
           }
+
+          if (s.intent === 'TRANSACTION') {
+            const total = s.total_amount || (Number(s.quantity || 0) * Number(s.rate || 0));
+            const { data: deal } = await supabase.from('deals').insert([{ user_id: user.id, party_id: partyId, type: s.type || 'purchase', commodity: s.commodity, quantity: s.quantity, unit: s.unit, rate: s.rate, total_amount: total, source: 'whatsapp' }]).select().single();
+            
+            const { data: curStock } = await supabase.from('stock').select('*').eq('user_id', user.id).ilike('item_name', s.commodity).maybeSingle();
+            const change = s.type === 'sale' ? -Number(s.quantity) : Number(s.quantity);
+            if (curStock) await supabase.from('stock').update({ quantity: Number(curStock.quantity) + change }).eq('id', curStock.id);
+            else if (change > 0) await supabase.from('stock').insert([{ user_id: user.id, item_name: s.commodity, quantity: change, unit: s.unit }]);
+
+            await supabase.from('whatsapp_sessions').update({ 
+              status: 'waiting_for_extras', 
+              session_data: { ...s, tx_id: deal?.id, tx_type: 'DEAL' } 
+            }).eq('id', pendingSession.id);
+            reply = `✅ *Saved!* 🎉\n\nNotes emaina add cheyala? Type cheyandi leda proof photo pampandi. 📸 (Leda 'No' kottandi)`;
+          } else {
+            // PAYMENT Logic: Check for multiple deals
+            const { data: deals } = await supabase.from('deals').select('*, payments(amount)').eq('party_id', partyId).eq('user_id', user.id);
+            const openDeals = (deals || []).filter(d => {
+               const paid = (d.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+               return Math.max(0, Number(d.total_amount) - paid) > 0;
+            }).sort((a, b) => new Date(a.deal_date) - new Date(b.deal_date));
+
+            if (openDeals.length > 1) {
+              await supabase.from('whatsapp_sessions').update({ 
+                status: 'waiting_for_deal_allocation', 
+                session_data: { ...s, party_id: partyId, candidates: openDeals } 
+              }).eq('id', pendingSession.id);
+              
+              let list = `🤔 *${s.party_name}* ki multiple deals unnyi. Emi deal nundi 'cut' cheyali?\n\n`;
+              openDeals.forEach((d, i) => {
+                const paid = (d.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
+                list += `${i+1}. *${d.commodity}* (${fmt(d.total_amount)}) - Pending: ${fmt(Number(d.total_amount) - paid)}\n`;
+              });
+              list += `\nNumber type cheyandi (1, 2, 3...)`;
+              reply = list;
+            } else {
+               const targetId = openDeals[0]?.id || null;
+               const { data: pay } = await supabase.from('payments').insert([{ 
+                 user_id: user.id, party_id: partyId, amount: s.amount, type: s.payment_type || 'in', deal_id: targetId, source: 'whatsapp' 
+               }]).select().single();
+               
+               await supabase.from('whatsapp_sessions').update({ 
+                 status: 'waiting_for_extras', 
+                 session_data: { ...s, tx_id: pay?.id, tx_type: 'PAYMENT' } 
+               }).eq('id', pendingSession.id);
+               reply = `✅ *Payment Saved!* 🎉\n\nNotes emaina add cheyala?`;
+            }
+          }
+        } else {
+          reply = "Confirm cheyadaniki emi ledu.";
         }
-      }
+        break;
 
-      return new Response(JSON.stringify({ reply: tmpl.success(data) }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      case 'CONFIRM_NO':
+        if (pendingSession) {
+          await supabase.from('whatsapp_sessions').update({ status: 'cancelled' }).eq('id', pendingSession.id);
+          reply = "❌ Cancelled.";
+        } else {
+          reply = "Ok.";
+        }
+        break;
+
+      default:
+        const answer = await getGeneralAnalysis(supabase, user.id, text, groqKey);
+        reply = answer; // Direct answer, no header
     }
 
-    // -- Confirmation NO --
-    if (intent === 'CONFIRM_NO' && pendingSession) {
-      await supabase
-        .from('whatsapp_sessions')
-        .update({ status: 'rejected' })
-        .eq('id', pendingSession.id);
-
-      return new Response(
-        JSON.stringify({ reply: `🎤 Ok! Meruppu cheseyandi malli.\n\nNew voice note send cheyyandi.` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // -- Provide Rate (bot asked for rate, user replied with number) --
-    if (intent === 'PROVIDE_RATE' && pendingSession) {
-      const rate = parseFloat(text.trim());
-      const data = { ...pendingSession.session_data, rate, total_amount: pendingSession.session_data.quantity * rate };
-      data.pending_amount = Math.max(0, data.total_amount - (data.advance_paid || 0));
-
-      await supabase
-        .from('whatsapp_sessions')
-        .update({ session_data: data, pending_intent: 'CONFIRM' })
-        .eq('id', pendingSession.id);
-
-      return new Response(JSON.stringify({ reply: tmpl.transactionConfirm(data) }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // -- Pending Query --
-    if (intent === 'QUERY_PENDING') {
-      const { data: deals } = await supabase
-        .from('deals')
-        .select('*, payments(*)')
-        .eq('user_id', userId);
-
-      const total = (deals || []).reduce((s, d) => s + d.total_amount, 0);
-      const paid = (deals || []).reduce((s, d) => s + (d.payments || []).reduce((ps, p) => ps + Number(p.amount), 0), 0);
-      const pending = Math.max(0, total - paid);
-
-      return new Response(
-        JSON.stringify({ reply: tmpl.pendingQuery('Your Account', { total, paid, pending }) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // -- Stock Query --
-    if (intent === 'QUERY_STOCK') {
-      const { data: stock } = await supabase
-        .from('stock')
-        .select('*')
-        .eq('user_id', userId)
-        .gt('current_stock', 0);
-
-      return new Response(
-        JSON.stringify({ reply: tmpl.stockQuery(stock || []) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // -- New Transaction (default) --
-    let parsed;
-    try {
-      parsed = await parseWithGroq(text, groqKey);
-    } catch {
-      return new Response(
-        JSON.stringify({ reply: tmpl.error('Samajhaledu. Please try again with more details.') }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    parsed.total_amount = Number(parsed.total_amount) || 0;
-    parsed.advance_paid = Number(parsed.advance_paid) || 0;
-    parsed.pending_amount = Math.max(0, parsed.total_amount - parsed.advance_paid);
-
-    // Clarification logic: Check for missing key fields
-    if (!parsed.party_name && parsed.type !== 'summary') {
-      return new Response(
-        JSON.stringify({ reply: `👤 *Party name cheppaledu!*\n\nEe transaction evari kosam record cheyali?` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!parsed.total_amount && parsed.type === 'payment') {
-      return new Response(
-        JSON.stringify({ reply: `💸 *Amount entha?*\n\nKumar ki entha payment chesaru? Please amount cheppandi.` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check if rate is missing
-    if (!parsed.rate && parsed.type !== 'payment') {
-      await supabase.from('whatsapp_sessions').insert([{
-        phone,
-        user_id: userId,
-        session_data: parsed,
-        pending_intent: 'ASK_RATE',
-        status: 'pending',
-      }]);
-
-      return new Response(
-        JSON.stringify({ reply: tmpl.askRate(parsed) }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // All fields present — ask for confirmation
-    await supabase.from('whatsapp_sessions').insert([{
-      phone,
-      user_id: userId,
-      session_data: parsed,
-      pending_intent: 'CONFIRM',
-      status: 'pending',
-    }]);
-
-    const reply = parsed.type === 'payment'
-      ? tmpl.paymentConfirm(parsed)
-      : tmpl.transactionConfirm(parsed);
-
-    return new Response(JSON.stringify({ reply }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ reply }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err) {
-    console.error('whatsapp-incoming error:', err);
-    return new Response(
-      JSON.stringify({ reply: `❌ Server error. Please try again.\n\n🔗 vyaparbook.com` }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ reply: `❌ Error: ${err.message}` }), { headers: corsHeaders });
   }
+});
 });

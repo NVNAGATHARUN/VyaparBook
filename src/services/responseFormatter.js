@@ -54,6 +54,8 @@ Party exact name type cheyyandi.`.trim()
       return whatsappLastPayment(data)
     case 'FEATURES':
       return whatsappFeatures()
+    case 'GENERAL_ANALYSIS':
+      return whatsappGeneralAnalysis(data)
     default:
       return '❌ Query samajhaledu. Malli try cheyyandi.'
   }
@@ -322,6 +324,19 @@ const whatsappFeatures = () => {
    WhatsApp entry = instant app update
 
 🔗 ${APP_URL}`.trim()
+}
+
+const whatsappGeneralAnalysis = (data) => {
+  return `
+🤖 *VyaparBook AI Agent*
+
+${data.answer}
+
+📊 *Quick Stats:*
+• Total Pending: ₹${formatAmount(data.data.total_pending)}
+• Monthly Sales: ₹${formatAmount(data.data.monthly_sales)}
+• Monthly Purchases: ₹${formatAmount(data.data.monthly_purchases)}
+`.trim()
 }
 
 const formatError = (data) => {

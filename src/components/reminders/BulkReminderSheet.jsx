@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, MessageCircle, CheckSquare, Square, Send, AlertCircle, Edit2 } from 'lucide-react';
+import { X, MessageCircle, CheckSquare, Square, Send, AlertCircle } from 'lucide-react';
 import { formatAmount } from '../../utils/formatAmount';
 import { updateParty } from '../../services/supabase';
 

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../services/supabase';
+import { supabase, getDetailedReports } from '../services/supabase';
 import { exportReportPDF, exportTransactionsExcel } from '../services/exportService';
 import BusinessChart from '../components/charts/BusinessChart';
+import ProfitChart from '../components/charts/ProfitChart';
 import BulkReminderSheet from '../components/reminders/BulkReminderSheet';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { formatAmount } from '../utils/formatAmount';
-import { FileText, Download, MessageCircle, ChevronDown } from 'lucide-react';
+import { FileText, Download, MessageCircle, ChevronDown, TrendingUp, DollarSign, Wallet } from 'lucide-react';
 
 const periods = [
   { label: 'This Month', value: 'month' },
@@ -16,9 +17,10 @@ const periods = [
 const Reports = ({ user }) => {
   const [period, setPeriod] = useState('month');
   const [data, setData] = useState(null);
+  const [detailedData, setDetailedData] = useState([]);
   const [deals, setDeals] = useState([]);
-  const [parties, setParties] = useState([]); // for reminder sheet
-  const [loans, setLoans] = useState([]); // for loan installments
+  const [parties, setParties] = useState([]);
+  const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // UI state
@@ -53,33 +55,22 @@ const Reports = ({ user }) => {
         fromDate = `${y}-${m}-${d}`;
       }
 
-      // Fetch Deals
-      let query = supabase
-        .from('deals')
-        .select('id, party_id, type, total_amount, commodity, deal_date, parties(name, phone), payments(amount)')
-        .eq('user_id', user.id);
-
-      if (fromDate) query = query.gte('deal_date', fromDate);
-      const { data: fetchedDeals } = await query.order('deal_date');
-
-      // Fetch Expenses
-      let expQuery = supabase
-        .from('expenses')
-        .select('amount, expense_date')
-        .eq('user_id', user.id);
-      if (fromDate) expQuery = expQuery.gte('expense_date', fromDate);
-      const { data: fetchedExpenses } = await expQuery;
-
-      // Fetch Loans
-      const { data: fetchedLoans } = await supabase
-        .from('loans')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .order('next_installment_date');
+      // Parallel Data Fetching
+      const [
+        { data: fetchedDeals },
+        { data: fetchedExpenses },
+        { data: fetchedLoans },
+        detailedChartData
+      ] = await Promise.all([
+        supabase.from('deals').select('id, party_id, type, total_amount, commodity, deal_date, parties(name, phone), payments(amount)').eq('user_id', user.id).gte('deal_date', fromDate || '2000-01-01').order('deal_date'),
+        supabase.from('expenses').select('amount, expense_date').eq('user_id', user.id).gte('expense_date', fromDate || '2000-01-01'),
+        supabase.from('loans').select('*').eq('user_id', user.id).eq('status', 'active').order('next_installment_date'),
+        getDetailedReports(user.id)
+      ]);
 
       setDeals(fetchedDeals || []);
       setLoans(fetchedLoans || []);
+      setDetailedData(detailedChartData || []);
 
       let totalPurchase = 0;
       let totalSale = 0;
@@ -159,7 +150,11 @@ const Reports = ({ user }) => {
   }, [user, period]);
 
   useEffect(() => {
-    loadData();
+    // Use a small delay or microtask to avoid cascading render warning
+    const timer = setTimeout(() => {
+      loadData();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loadData]);
 
   const handleExportPDF = () => {
@@ -238,44 +233,49 @@ const Reports = ({ user }) => {
         <div className="px-4 pt-4 space-y-4">
           {/* Summary Cards */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
+            <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100 relative overflow-hidden">
+              <DollarSign className="absolute -right-2 -bottom-2 w-16 h-16 text-orange-200/50" />
               <p className="text-xs text-orange-500 font-bold uppercase mb-1">Purchase</p>
               <p className="text-xl font-black text-orange-700 font-mono-amount leading-tight">{formatAmount(data?.totalPurchase)}</p>
             </div>
-            <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100">
+            <div className="bg-blue-50 rounded-2xl p-4 border border-blue-100 relative overflow-hidden">
+              <TrendingUp className="absolute -right-2 -bottom-2 w-16 h-16 text-blue-200/50" />
               <p className="text-xs text-blue-500 font-bold uppercase mb-1">Sales</p>
               <p className="text-xl font-black text-blue-700 font-mono-amount leading-tight">{formatAmount(data?.totalSale)}</p>
             </div>
-            <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
+            <div className="bg-red-50 rounded-2xl p-4 border border-red-100 relative overflow-hidden">
+              <Wallet className="absolute -right-2 -bottom-2 w-16 h-16 text-red-200/50" />
               <p className="text-xs text-red-500 font-bold uppercase mb-1">Expenses</p>
               <p className="text-xl font-black text-red-600 font-mono-amount leading-tight">{formatAmount(data?.totalExpense)}</p>
             </div>
-            <div className={`rounded-2xl p-4 border shadow-sm ${data?.net >= 0 ? 'bg-green-600 border-green-500' : 'bg-red-600 border-red-500'}`}>
+            <div className={`rounded-2xl p-4 border shadow-sm relative overflow-hidden ${data?.net >= 0 ? 'bg-emerald-600 border-emerald-500' : 'bg-rose-600 border-rose-500'}`}>
+              <TrendingUp className="absolute -right-2 -bottom-2 w-16 h-16 text-white/20" />
               <p className="text-xs font-bold uppercase mb-1 text-white opacity-80">Net Profit</p>
               <p className="text-xl font-black font-mono-amount leading-tight text-white">{formatAmount(data?.net)}</p>
             </div>
           </div>
 
+          {/* Charts */}
+          <ProfitChart data={detailedData} title="Profit Trends" />
+          <BusinessChart data={data?.chartData} title="Purchase vs Sales Breakdown" />
+
           {/* Total pending banner */}
           {totalPending > 0 && (
             <div
-              className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl px-4 py-3 flex items-center justify-between cursor-pointer"
+              className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl px-4 py-4 flex items-center justify-between cursor-pointer shadow-lg shadow-orange-100"
               onClick={() => setShowReminders(true)}
             >
               <div>
-                <p className="text-white text-xs font-semibold opacity-90">Total Outstanding</p>
-                <p className="text-white text-xl font-black">₹{formatAmount(totalPending)}</p>
+                <p className="text-white text-[10px] font-bold uppercase opacity-80 tracking-wider">Total Outstanding</p>
+                <p className="text-white text-2xl font-black">₹{formatAmount(totalPending)}</p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="text-white text-xs font-bold bg-white/20 px-3 py-1.5 rounded-xl flex items-center gap-1">
-                  <MessageCircle size={12} /> Send Reminders
+                <div className="text-white text-xs font-black bg-white/20 px-4 py-2 rounded-xl flex items-center gap-2 backdrop-blur-sm border border-white/10">
+                  <MessageCircle size={14} /> Remind All
                 </div>
               </div>
             </div>
           )}
-
-          {/* Chart */}
-          <BusinessChart data={data?.chartData} title="Purchase vs Sales" />
 
           {/* To Pay */}
           {data?.toPay?.length > 0 && (

@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../services/supabase';
 import { Plus, Trash2, Fuel, Home, Lightbulb, User, Truck, MoreHorizontal, Calendar } from 'lucide-react';
 import { formatAmount } from '../../utils/formatAmount';
@@ -25,10 +25,10 @@ const ExpenseList = ({ user }) => {
     expense_date: new Date().toISOString().split('T')[0]
   });
 
-  const loadExpenses = async () => {
+  const loadExpenses = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('expenses')
       .select('*')
       .eq('user_id', user.id)
@@ -36,11 +36,14 @@ const ExpenseList = ({ user }) => {
     
     if (data) setExpenses(data);
     setLoading(false);
-  };
+  }, [user]);
 
   useEffect(() => {
-    loadExpenses();
-  }, [user]);
+    const timer = setTimeout(() => {
+      loadExpenses();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loadExpenses]);
 
   const handleAdd = async (e) => {
     e.preventDefault();

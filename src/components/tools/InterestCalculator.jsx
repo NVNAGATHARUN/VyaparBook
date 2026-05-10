@@ -1,13 +1,13 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { 
-  Calculator, Calendar, Info, RefreshCw, Save, Trash2, 
-  ChevronRight, TrendingUp, Landmark, DollarSign, Wallet,
+  Calculator, Calendar, RefreshCw, Save, 
+  Landmark, DollarSign, Wallet,
   ArrowDownLeft, ArrowUpRight
 } from 'lucide-react';
 import { formatAmount } from '../../utils/formatAmount';
 
-const InterestCalculator = ({ user, onSaveLoan }) => {
+const InterestCalculator = ({ onSaveLoan }) => {
   const [loanType, setLoanType] = useState('hand'); // hand, bank, gold
   const [direction, setDirection] = useState('taken'); // taken, given
   const [principal, setPrincipal] = useState('');
@@ -19,14 +19,12 @@ const InterestCalculator = ({ user, onSaveLoan }) => {
   const [durationMonths, setDurationMonths] = useState('');
   const [inputMode, setInputMode] = useState('dates'); // dates, duration
 
-  const [result, setResult] = useState(null);
-
-  const calculateInterest = () => {
+  const result = useMemo(() => {
     const P = parseFloat(principal);
     const R_val = parseFloat(interestRate);
-    if (isNaN(P) || isNaN(R_val)) return;
+    if (isNaN(P) || isNaN(R_val)) return null;
 
-    let T_months = 0;
+    let T_months;
     if (inputMode === 'dates') {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -38,7 +36,7 @@ const InterestCalculator = ({ user, onSaveLoan }) => {
     }
 
     // Monthly Rate
-    let monthlyRate = 0;
+    let monthlyRate;
     if (rateMode === 'percentage') {
       monthlyRate = (R_val / 12) / 100;
     } else {
@@ -67,22 +65,14 @@ const InterestCalculator = ({ user, onSaveLoan }) => {
       }
     }
 
-    setResult({
+    return {
       principal: P,
       interest: interest,
       total: P + interest,
       emi: emi,
       duration: T_months.toFixed(1),
       monthlyRate: (monthlyRate * 100).toFixed(2)
-    });
-  };
-
-  useEffect(() => {
-    if (principal && interestRate) {
-      calculateInterest();
-    } else {
-      setResult(null);
-    }
+    };
   }, [principal, interestRate, interestType, rateMode, startDate, endDate, durationMonths, inputMode]);
 
   return (
@@ -309,7 +299,6 @@ const InterestCalculator = ({ user, onSaveLoan }) => {
             onClick={() => {
               setPrincipal('');
               setInterestRate('');
-              setResult(null);
             }}
             className="w-full py-3.5 rounded-2xl bg-gray-50 text-gray-400 font-bold text-sm flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
           >

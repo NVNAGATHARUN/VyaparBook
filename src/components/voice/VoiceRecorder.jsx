@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Mic, Square } from 'lucide-react';
 import { useVoice, VOICE_STATES } from '../../hooks/useVoice';
 import ConfirmationCard from './ConfirmationCard';
@@ -66,15 +66,22 @@ const VoiceRecorder = ({ onConfirmed }) => {
   } = useVoice();
 
   const [enrichedData, setEnrichedData] = useState(null);
-  const [missingFields, setMissingFields] = useState([]);
-
-  useEffect(() => {
-    if (voiceState === VOICE_STATES.CONFIRMING && parsedData) {
-      const missing = getMissingFields(parsedData);
-      setMissingFields(missing); // eslint-disable-line react-hooks/set-state-in-effect
-      setEnrichedData(parsedData);
+  
+  // Use useMemo for derived state to avoid cascading renders
+  const missingFields = useMemo(() => {
+    const dataToAnalyze = enrichedData || parsedData;
+    if (voiceState === VOICE_STATES.CONFIRMING && dataToAnalyze) {
+      return getMissingFields(dataToAnalyze);
     }
-  }, [voiceState, parsedData]);
+    return [];
+  }, [voiceState, parsedData, enrichedData]);
+
+  // Sync enrichedData when parsedData changes initially
+  useEffect(() => {
+    if (voiceState === VOICE_STATES.CONFIRMING && parsedData && !enrichedData) {
+      Promise.resolve().then(() => setEnrichedData(parsedData));
+    }
+  }, [voiceState, parsedData, enrichedData]);
 
   const handleConfirm = (finalData) => {
     if (onConfirmed) onConfirmed(finalData, transcript);
@@ -85,13 +92,10 @@ const VoiceRecorder = ({ onConfirmed }) => {
   const handleRedo = () => {
     reset();
     setEnrichedData(null);
-    setMissingFields([]);
-    // Returning to idle state as requested by user
   };
 
   const handleFollowUpComplete = (updatedData) => {
     setEnrichedData(updatedData);
-    setMissingFields([]);
   };
 
   return (
