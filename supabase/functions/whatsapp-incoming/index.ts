@@ -340,4 +340,3 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ reply: `❌ Error: ${err.message}` }), { headers: corsHeaders });
   }
 });
-});
