@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Loader2 } from 'lucide-react';
-import { getParties, createDeal, createPayment, upsertStock } from '../services/supabase';
+import { getParties, createDealAtomic } from '../services/supabase';
 import { todayISO } from '../utils/formatDate';
 
 const units = ['bags', 'lorry', 'quintal', 'ton', 'kg'];
@@ -84,8 +84,7 @@ const AddDeal = ({ user }) => {
     setError('');
 
     try {
-      const { data: deal, error: dealErr } = await createDeal({
-        user_id: user.id,
+      const { error: atomicErr } = await createDealAtomic({
         party_id: form.party_id,
         type: form.type,
         commodity: form.commodity,
@@ -93,30 +92,14 @@ const AddDeal = ({ user }) => {
         unit: form.unit,
         rate: Number(form.rate) || 0,
         total_amount: Number(form.total_amount),
+        advance_paid: Number(form.advance_paid) || 0,
         deal_date: form.deal_date,
+        source: 'pwa',
+        payment_mode: 'cash',
+        notes: form.notes
       });
 
-      if (dealErr) throw new Error(dealErr.message);
-
-      if (Number(form.advance_paid) > 0) {
-        await createPayment({
-          deal_id: deal.id,
-          user_id: user.id,
-          amount: Number(form.advance_paid),
-          payment_mode: 'cash',
-          payment_date: form.deal_date,
-        });
-      }
-
-      if (form.commodity && Number(form.quantity) > 0) {
-        await upsertStock(
-          user.id,
-          form.commodity,
-          form.unit,
-          Number(form.quantity),
-          form.type
-        );
-      }
+      if (atomicErr) throw new Error(atomicErr.message);
 
       navigate(-1);
     } catch (err) {
