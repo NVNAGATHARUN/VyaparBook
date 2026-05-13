@@ -126,27 +126,94 @@ const transcribeAudio = async (blob, config) => {
   return json.text || "";
 };
 
+// ─── Meta WhatsApp Helper ──────────────────────────────────────────────────────
+const sendWhatsAppMessage = async (toPhone, text, phoneNumberId, waToken) => {
+  try {
+    await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${waToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: toPhone,
+        text: { body: text }
+      })
+    });
+  } catch (e) {
+    console.error('Failed to send WhatsApp message:', e);
+  }
+};
+
 // ─── Main Handler ────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
+  // 1. Meta Webhook Verification (hub.challenge)
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    const mode = url.searchParams.get('hub.mode');
+    const token = url.searchParams.get('hub.verify_token');
+    const challenge = url.searchParams.get('hub.challenge');
+
+    if (mode === 'subscribe' && token === 'vyaparbook_secret_token') {
+      console.log('Webhook verified successfully!');
+      return new Response(challenge, { status: 200 });
+    }
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  // 2. Process Incoming Meta Webhook POST Payload
   try {
+    const body = await req.json();
+
+    // Acknowledge non-WhatsApp events
+    if (body.object !== 'whatsapp_business_account') {
+      return new Response('Not a WhatsApp event', { status: 404 });
+    }
+
+    const entry = body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const message = value?.messages?.[0];
+
+    // Meta sends delivery status updates and read receipts. Ignore them.
+    if (!message) {
+      return new Response('EVENT_RECEIVED', { status: 200 });
+    }
+
     const supabase = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
     const groqKey = Deno.env.get('GROQ_API_KEY');
     const waToken = Deno.env.get('WHATSAPP_ACCESS_TOKEN');
 
-    const body = await req.json();
-    const phone = body.phone;
-    let text = body.text || "";
-    const mediaId = body.audio_id || body.image_id;
-    const mediaType = body.audio_id ? 'audio' : (body.image_id ? 'image' : null);
+    const rawPhone = message.from; // e.g., "919876543210"
+    const phone = `+${rawPhone}`; 
+    const phoneNumberId = value.metadata?.phone_number_id;
 
-    if (!phone) return new Response('Missing phone', { status: 400 });
+    let text = message.text?.body || "";
+    const mediaType = message.type;
+    const mediaId = mediaType === 'audio' ? message.audio?.id : (mediaType === 'image' ? message.image?.id : null);
 
+    // Fetch the user session to know context
     const { data: waUser } = await supabase.from('whatsapp_users').select('*, users(*)').eq('phone', phone).eq('is_active', true).maybeSingle();
-    if (!waUser) return new Response(JSON.stringify({ reply: "👋 Welcome to VyaparBook! Please register at vyaparbook.vercel.app" }), { headers: corsHeaders });
+    
+    if (!waUser) {
+      const reply = "👋 Welcome to VyaparBook! Please register at vyaparbook.vercel.app with this phone number to use the AI Agent.";
+      await sendWhatsAppMessage(rawPhone, reply, phoneNumberId, waToken);
+      return new Response('EVENT_RECEIVED', { status: 200 });
+    }
 
     const user = waUser.users;
+
+    // Fetch active session if any
+    const { data: pendingSession } = await supabase.from('whatsapp_sessions')
+      .select('*')
+      .eq('phone', phone)
+      .in('status', ['pending', 'waiting_for_extras', 'waiting_for_deal_allocation'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     // --- Check for follow-up notes or deal allocation ---
     if (pendingSession?.status === 'waiting_for_extras' && text) {
@@ -154,7 +221,9 @@ Deno.serve(async (req) => {
       const table = tx_type === 'PAYMENT' ? 'payments' : 'deals';
       await supabase.from(table).update({ notes: text }).eq('id', tx_id);
       await supabase.from('whatsapp_sessions').update({ status: 'confirmed' }).eq('id', pendingSession.id);
-      return new Response(JSON.stringify({ reply: "✅ Notes added! Transaction complete. 👍" }), { headers: corsHeaders });
+      
+      await sendWhatsAppMessage(rawPhone, "✅ Notes added! Transaction complete. 👍", phoneNumberId, waToken);
+      return new Response('EVENT_RECEIVED', { status: 200 });
     }
 
     if (pendingSession?.status === 'waiting_for_deal_allocation' && text) {
@@ -172,7 +241,8 @@ Deno.serve(async (req) => {
           session_data: { ...s, tx_id: pay?.id, tx_type: 'PAYMENT' } 
         }).eq('id', pendingSession.id);
 
-        return new Response(JSON.stringify({ reply: `✅ Linked to *${deal.commodity}*! 🎉\n\nNotes emaina add cheyala?` }), { headers: corsHeaders });
+        await sendWhatsAppMessage(rawPhone, `✅ Linked to *${deal.commodity}*! 🎉\n\nNotes emaina add cheyala?`, phoneNumberId, waToken);
+        return new Response('EVENT_RECEIVED', { status: 200 });
       }
     }
 
@@ -189,7 +259,6 @@ Deno.serve(async (req) => {
       await supabase.storage.from('payment_proofs').upload(fileName, blob, { contentType: 'image/jpeg' });
       const { data: { publicUrl } } = supabase.storage.from('payment_proofs').getPublicUrl(fileName);
 
-      // Link to last deal/payment
       let targetId = pendingSession?.session_data?.tx_id;
       let targetTable = pendingSession?.session_data?.tx_type === 'PAYMENT' ? 'payments' : 'deals';
 
@@ -202,7 +271,9 @@ Deno.serve(async (req) => {
       if (targetId) {
         await supabase.from(targetTable).update({ proof_url: publicUrl }).eq('id', targetId);
         if (pendingSession) await supabase.from('whatsapp_sessions').update({ status: 'confirmed' }).eq('id', pendingSession.id);
-        return new Response(JSON.stringify({ reply: "📸 Proof linked! Transactions perfectly save ayyayi. ✅" }), { headers: corsHeaders });
+        
+        await sendWhatsAppMessage(rawPhone, "📸 Proof linked! Transactions perfectly save ayyayi. ✅", phoneNumberId, waToken);
+        return new Response('EVENT_RECEIVED', { status: 200 });
       }
     }
 
@@ -232,7 +303,8 @@ Deno.serve(async (req) => {
       case 'PAYMENT':
         const d = analysis.entities || {};
         if (!d.party_name && !d.amount && !d.quantity) {
-           return new Response(JSON.stringify({ reply: "Ardam kaledu. Party peru and amount cheppandi. 🙏" }), { headers: corsHeaders });
+           reply = "Ardam kaledu. Party peru and amount cheppandi. 🙏";
+           break;
         }
         await supabase.from('whatsapp_sessions').insert([{ phone, user_id: user.id, session_data: { ...d, intent }, status: 'pending' }]);
         if (intent === 'TRANSACTION') {
@@ -259,7 +331,6 @@ Deno.serve(async (req) => {
           if (s.intent === 'TRANSACTION') {
             const total = s.total_amount || (Number(s.quantity || 0) * Number(s.rate || 0));
             
-            // Use the unified atomic RPC for WhatsApp entries too!
             const { data: atomicRes, error: atomicErr } = await supabase.rpc('create_deal_atomic', {
               p_party_id: partyId,
               p_type: s.type || 'purchase',
@@ -268,10 +339,10 @@ Deno.serve(async (req) => {
               p_unit: s.unit || 'bags',
               p_rate: Number(s.rate) || 0,
               p_total_amount: total,
-              p_advance_paid: 0, // Advance is handled separately if needed, but usually 0 for WhatsApp auto-deals
+              p_advance_paid: 0,
               p_deal_date: new Date().toISOString().split('T')[0],
               p_source: 'whatsapp',
-              p_user_id: user.id // Pass explicitly because SERVICE_ROLE has no auth.uid()
+              p_user_id: user.id 
             });
 
             if (atomicErr) throw atomicErr;
@@ -282,7 +353,6 @@ Deno.serve(async (req) => {
             }).eq('id', pendingSession.id);
             reply = `✅ *Saved!* 🎉\n\nNotes emaina add cheyala? Type cheyandi leda proof photo pampandi. 📸 (Leda 'No' kottandi)`;
           } else {
-            // PAYMENT Logic: Check for multiple deals
             const { data: deals } = await supabase.from('deals').select('*, payments(amount)').eq('party_id', partyId).eq('user_id', user.id);
             const openDeals = (deals || []).filter(d => {
                const paid = (d.payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
@@ -331,12 +401,20 @@ Deno.serve(async (req) => {
 
       default:
         const answer = await getGeneralAnalysis(supabase, user.id, text, groqKey);
-        reply = answer; // Direct answer, no header
+        reply = answer; 
     }
 
-    return new Response(JSON.stringify({ reply }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    // Send the actual reply via Meta Graph API
+    if (reply) {
+      await sendWhatsAppMessage(rawPhone, reply, phoneNumberId, waToken);
+    }
+
+    // Always return 200 OK to Meta so they know we received the message
+    return new Response('EVENT_RECEIVED', { status: 200 });
 
   } catch (err) {
-    return new Response(JSON.stringify({ reply: `❌ Error: ${err.message}` }), { headers: corsHeaders });
+    console.error(err);
+    // Even on error, return 200 to prevent Meta from endlessly retrying failing messages
+    return new Response('EVENT_RECEIVED', { status: 200 });
   }
 });
