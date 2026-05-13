@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Leaf, Phone, User, Building2, ArrowRight, Loader2,
@@ -60,7 +60,6 @@ const Login = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [otp, setOtp] = useState('');
-  const [tempUserId, setTempUserId] = useState(null);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -184,7 +183,7 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+      const { error: verifyErr } = await supabase.auth.verifyOtp({
         phone: `+91${phone.replace(/\D/g, '').slice(-10)}`,
         token: otp,
         type: 'sms',

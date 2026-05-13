@@ -33,11 +33,26 @@ const ResetPassword = () => {
     setError('');
 
     try {
-      const { error: updateErr } = await supabase.auth.updateUser({
-        password: password
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
 
-      if (updateErr) throw updateErr;
+      if (user?.phone) {
+        // Phone recovery: update the dummy email password via RPC
+        const { error: rpcErr } = await supabase.rpc('reset_phone_password', { 
+          p_new_password: password 
+        });
+        if (rpcErr) throw rpcErr;
+      } else {
+        // Email recovery: use native updateUser
+        const { error: updateErr } = await supabase.auth.updateUser({
+          password: password
+        });
+        if (updateErr) throw updateErr;
+      }
+
+      // Important: Sign out of the recovery session (especially the Phone OTP one)
+      // so that they can log in cleanly with their actual credentials.
+      await supabase.auth.signOut();
 
       setSuccess(true);
       setTimeout(() => navigate('/login'), 3000);

@@ -58,7 +58,6 @@ Now, analyze this message and respond in JSON:
 
 const inferIntentFromText = (message) => {
   const text = (message || '').toLowerCase().trim()
-  const startsLikeQuery = /^(show|give me|tell me|what|how much|list|all|which|who|enta|chupinchu)/.test(text)
 
   if (/^(hi|hello|hey|good morning|good evening|good afternoon|namaste|hii|helo|namaskaram)\b/.test(text)) {
     return 'GREETING'
