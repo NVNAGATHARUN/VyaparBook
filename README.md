@@ -19,14 +19,15 @@ VyaparBook is a high-performance **Progressive Web App (PWA)** integrated with a
 ## ✨ Key Features (v2.5 Production Elite)
 
 ### 🤖 Smart WhatsApp AI Agent
+- **Full CRUD via Chat**: Add, modify, or delete deals directly from WhatsApp. The bot handles confirmation flows and multi-deal selections automatically.
+- **Zero Hallucinations**: Bot computations (Sales, Purchases, Net Profit, Stock) are processed directly against the database with strict mathematical precision.
 - **Autonomous Multi-Step Flows**: The bot confirms deals, asks for missing info, and proactively suggests adding notes or photo receipts.
-- **Smart Payment Allocation**: If a party has multiple pending deals, the bot asks you exactly which one to "cut" the payment from.
 - **Tenglish Voice Support**: Send voice notes in Telugu/English; the bot transcribes and parses them instantly.
 
 ### 🔐 Premium Multi-Channel Auth
 - **Dual Login Methods**: Log in securely using **Email + Password** or **Phone Number + Password**.
-- **Self-Service Recovery**: Built-in "Forgot Password" flow with secure email reset links and phone OTP verification.
-- **Mandatory Verification**: Enforced account verification to ensure data privacy and security.
+- **Unique Account Consolidation**: Ensures 1-to-1 mapping of phone numbers to accounts, preventing duplicate records and routing WhatsApp messages perfectly.
+- **Self-Service Recovery**: Built-in "Forgot Password" flow with secure reset options and OTP verification.
 
 ### 📔 Digital Day Book (Roznamcha)
 - **Chronological Business Log**: A minute-by-minute view of every Sale, Purchase, Payment, and Expense.
@@ -120,4 +121,4 @@ select cron.schedule(
 ## 👨‍💻 Built with ❤️ for the Trading Community
 VyaparBook is designed to empower local Indian traders with enterprise-grade AI. It respects local business logic, local language, and the need for high-speed operation.
 
-*Version 2.5.0 — Stable Production Release — May 2026*
+*Version 2.6.0 — Hardened Production Elite — May 2026*
