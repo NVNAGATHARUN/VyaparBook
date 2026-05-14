@@ -144,6 +144,7 @@ export const createDealAtomic = async (params) => {
     p_source: params.source || 'pwa',
     p_payment_mode: params.payment_mode || 'cash',
     p_notes: params.notes || null,
+    p_user_id: params.user_id,
   });
   return { data, error };
 };

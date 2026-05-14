@@ -85,6 +85,7 @@ const AddDeal = ({ user }) => {
 
     try {
       const { error: atomicErr } = await createDealAtomic({
+        user_id: user.id,
         party_id: form.party_id,
         type: form.type,
         commodity: form.commodity,

@@ -25,10 +25,8 @@ const ensureUserProfile = async (authUser) => {
   }
 };
 
-const getPhoneEmail = (phone) => {
-  const clean = phone.replace(/\D/g, '').slice(-10);
-  return `user${clean}@vyaparbook.com`;
-};
+// Removed getPhoneEmail as we now ask the user for their real email.
+
 
 const InputRow = ({ icon: Icon, children }) => (
   <div className="flex items-center border-2 border-gray-200 rounded-2xl overflow-hidden focus-within:border-green-500 transition-colors bg-white shadow-sm">
@@ -65,14 +63,36 @@ const Login = ({ onLogin }) => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    const loginIdentifier = tab === 'email' ? email.trim() : getPhoneEmail(phone);
-    if (!loginIdentifier || !password) return setError('All fields are required');
+    let loginEmail = email.trim();
+    
+    if (tab === 'phone') {
+      if (!phone) return setError('Phone number is required');
+      setLoading(true);
+      try {
+        const { data: foundEmail, error: rpcErr } = await supabase.rpc('get_email_by_phone', { 
+          p_phone: phone.replace(/\D/g, '').slice(-10) 
+        });
+        if (rpcErr || !foundEmail) {
+          throw new Error('Account not found with this phone number');
+        }
+        loginEmail = foundEmail;
+      } catch (err) {
+        setError(err.message);
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (!loginEmail || !password) {
+      setLoading(false);
+      return setError('Email/Phone and Password are required');
+    }
 
     setLoading(true);
     setError('');
     try {
       const { data, error: authErr } = await supabase.auth.signInWithPassword({
-        email: loginIdentifier,
+        email: loginEmail,
         password: password,
       });
 
@@ -107,8 +127,8 @@ const Login = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
-      const loginIdentifier = tab === 'email' ? email.trim() : getPhoneEmail(phone);
-      const displayPhone = tab === 'phone' ? `+91${phone.replace(/\D/g, '').slice(-10)}` : '';
+      const loginIdentifier = email.trim();
+      const displayPhone = `+91${phone.replace(/\D/g, '').slice(-10)}`;
 
       const { data, error: authErr } = await supabase.auth.signUp({
         email: loginIdentifier,
@@ -258,17 +278,10 @@ const Login = ({ onLogin }) => {
             <p className="text-gray-500 text-sm mb-6">Enter your {tab} to receive recovery instructions.</p>
             
             <div className="mb-6">
-              <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">{tab}</label>
-              {tab === 'email' ? (
-                <InputRow icon={Mail}>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base outline-none" />
-                </InputRow>
-              ) : (
-                <InputRow icon={Phone}>
-                  <span className="pl-4 text-gray-400 font-bold text-sm">+91</span>
-                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9876543210" maxLength={10} className="flex-1 px-4 py-3.5 text-base outline-none" />
-                </InputRow>
-              )}
+              <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">Login Email</label>
+              <InputRow icon={Mail}>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base outline-none" />
+              </InputRow>
             </div>
 
             <button type="submit" disabled={loading} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 flex items-center justify-center gap-2">
@@ -324,6 +337,23 @@ const Login = ({ onLogin }) => {
                       <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Ravi Rice Mills" className="flex-1 px-4 py-3.5 text-base outline-none" />
                     </InputRow>
                   </div>
+                  {/* Always ask for Phone in Email tab and Email in Phone tab during signup */}
+                  {tab === 'email' ? (
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">Mobile Number (For WhatsApp)</label>
+                      <InputRow icon={Phone}>
+                        <span className="pl-4 text-gray-400 font-bold text-sm">+91</span>
+                        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="9876543210" maxLength={10} className="flex-1 px-4 py-3.5 text-base outline-none" />
+                      </InputRow>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-xs font-bold text-gray-700 mb-2 block uppercase tracking-widest">Login Email</label>
+                      <InputRow icon={Mail}>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="flex-1 px-4 py-3.5 text-base outline-none" />
+                      </InputRow>
+                    </div>
+                  )}
                 </>
               )}
 

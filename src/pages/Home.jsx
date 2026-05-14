@@ -341,6 +341,7 @@ const Home = ({ user, onLogout }) => {
       } else {
         // Atomic Deal Save (Deal + Advance Payment + Stock all in one transaction)
         const { error: dealErr } = await createDealAtomic({
+          user_id: user.id,
           party_id: partyRecord.id,
           type: finalData.type,
           commodity: finalData.commodity,

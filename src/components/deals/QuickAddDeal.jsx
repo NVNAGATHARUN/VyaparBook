@@ -62,6 +62,7 @@ const QuickAddDeal = ({ user, onSaved }) => {
     setError('');
     try {
       const { error: dErr } = await createDealAtomic({
+        user_id: user.id,
         party_id: form.party_id,
         type: form.type,
         commodity: form.commodity,
