@@ -118,6 +118,37 @@ const Login = ({ onLogin }) => {
     }
   };
 
+  const handleDemoLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: 'demo@vyaparbook.com',
+        password: 'demo123',
+      });
+
+      if (authErr) throw authErr;
+
+      const authUser = data.user;
+      await ensureUserProfile(authUser);
+      
+      const userData = {
+        id: authUser.id,
+        email: authUser.email,
+        name: 'Demo Evaluator',
+        phone: '+910000000000',
+        business_name: 'Demo Vyapar',
+      };
+      
+      onLogin(userData);
+      navigate('/');
+    } catch (err) {
+      setError(err.message || 'Demo login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSignUp = async (e) => {
     e.preventDefault();
     if (tab === 'email' && (!email || !password || !name)) return setError('All fields are required');
@@ -388,9 +419,20 @@ const Login = ({ onLogin }) => {
                 </InputRow>
               </div>
 
-              <button type="submit" disabled={loading} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 flex items-center justify-center gap-2 mt-4">
+              <button type="submit" disabled={loading} className="w-full bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-100 flex items-center justify-center gap-2 mt-4 transition-transform active:scale-95">
                 {loading ? <Loader2 className="animate-spin" /> : <>{mode === 'login' ? 'Login' : 'Create Account'} <ArrowRight size={18} /></>}
               </button>
+
+              {mode === 'login' && (
+                <button 
+                  type="button" 
+                  onClick={handleDemoLogin} 
+                  disabled={loading} 
+                  className="w-full bg-gray-100 text-gray-700 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 mt-2 hover:bg-gray-200 transition-colors active:scale-95 border border-gray-200"
+                >
+                  🚀 Try Demo Account
+                </button>
+              )}
 
               <div className="text-center pt-4">
                 <button
